@@ -57,5 +57,39 @@ grep -q "example.org" <<< "$out"; check "web links ignored" "$?" "1"
 mkdir -p "$root/skills/lrc-good/references" && touch "$root/skills/lrc-good/references/missing.md"
 "$repo/check.sh" "$root" >/dev/null; check "existing link passes" "$?" "0"
 
+# install.sh
+src="$tmp/share" home="$tmp/home"
+mkdir -p "$src" "$home"
+cp "$repo/install.sh" "$src/"
+skill "$src" skills/lrc-one
+skill "$src" workflows/flow-two
+chmod -R a-w "$src"
+HOME="$home" "$src/install.sh" >/dev/null; check "install succeeds from read-only checkout" "$?" "0"
+chmod -R u+w "$src"
+for t in .claude/skills .agents/skills; do
+    check "links lrc-one into $t" "$(readlink "$home/$t/lrc-one")" "$src/skills/lrc-one"
+    check "links flow-two into $t" "$(readlink "$home/$t/flow-two")" "$src/workflows/flow-two"
+done
+
+HOME="$home" "$src/install.sh" --check >/dev/null; check "check clean after install" "$?" "0"
+check "second run is silent" "$(HOME="$home" "$src/install.sh")" ""
+
+mkdir -p "$home/.claude/skills/lrc-mine"
+ln -s /elsewhere "$home/.agents/skills/lrc-mine"
+skill "$src" skills/lrc-mine
+out="$(HOME="$home" "$src/install.sh")"
+grep -q "skip $home/.claude/skills/lrc-mine" <<< "$out"; check "own directory skipped" "$?" "0"
+check "own directory untouched" "$(test -L "$home/.claude/skills/lrc-mine"; echo $?)" "1"
+check "foreign link untouched" "$(readlink "$home/.agents/skills/lrc-mine")" "/elsewhere"
+rm -rf "$src/skills/lrc-mine"
+
+mv "$src/skills/lrc-one" "$src/workflows/lrc-one"
+HOME="$home" "$src/install.sh" --check >/dev/null; check "check reports moved skill" "$?" "1"
+HOME="$home" "$src/install.sh" >/dev/null
+check "moved skill relinked" "$(readlink "$home/.claude/skills/lrc-one")" "$src/workflows/lrc-one"
+rm -rf "$src/workflows/flow-two"
+HOME="$home" "$src/install.sh" >/dev/null
+check "deleted skill link removed" "$(test -L "$home/.agents/skills/flow-two"; echo $?)" "1"
+
 echo "$((total - failures))/$total passed"
 exit $((failures > 0))
