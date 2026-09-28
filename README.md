@@ -2,6 +2,8 @@
 
 Agent skills for nano group members on the LBL Lawrencium cluster (LRC). They work in Claude Code, Codex, Gemini CLI and opencode.
 
+> This repo is temporarily private (it will be made public later). Group members do not need a clone: skills are consumed through the shared checkout below.
+
 ## Install
 
 ```bash
