@@ -57,6 +57,11 @@ grep -q "example.org" <<< "$out"; check "web links ignored" "$?" "1"
 mkdir -p "$root/skills/lrc-good/references" && touch "$root/skills/lrc-good/references/missing.md"
 "$repo/check.sh" "$root" >/dev/null; check "existing link passes" "$?" "0"
 
+mkdir -p "$root/skills/lrc-good/assets"
+printf '#!/bin/bash\nif true; then\n' > "$root/skills/lrc-good/assets/broken.sbatch"
+"$repo/check.sh" "$root" | grep -q "shell syntax error in assets/broken.sbatch"; check "broken asset script rejected" "$?" "0"
+rm "$root/skills/lrc-good/assets/broken.sbatch"
+
 # install.sh
 src="$tmp/share" home="$tmp/home"
 mkdir -p "$src" "$home"

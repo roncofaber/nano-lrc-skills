@@ -28,10 +28,11 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 mpirun --bind-to core --map-by core -np 24 "$LMP_EXEC" -in input -screen none
 ```
 
-The `-intel25` build uses Intel MPI, where the OpenMPI binding flags above do not apply. Pin through the environment (`I_MPI_PIN=1 I_MPI_PIN_DOMAIN=core`) and confirm the pin map with `I_MPI_DEBUG=4` on the first run, since unbound ranks cost 14x (see `lrc-cluster`).
+The `-intel25` build uses Intel MPI: pin through the environment instead (see "MPI binding" in `lrc-cluster`).
 
 - 24 ranks on one etna node is the sweet spot for systems of order 6000 atoms (60% parallel efficiency). 2-node/48-rank is not worth it at that size.
 - Performance reference for ~6k atoms with PPPM + SHAKE: about 8 ns/day at 24 ranks (see [references/performance.md](references/performance.md)).
+- Size `--time` from measured throughput: a ~6k-atom chain of 5.52M steps at 0.5 fs runs in about 7.5 h at 204 steps/s on one 24-rank node, so 12 h fits with margin. Larger interface systems are slower; benchmark first. For multi-stage chains, support resume from the last completed stage's restart file (e.g. a `START_STAGE` variable checked against the stage list).
 
 ## Benchmarking
 
@@ -44,7 +45,7 @@ The `-intel25` build uses Intel MPI, where the OpenMPI binding flags above do no
 
 - LAMMPS restarts do NOT carry the kspace style. Generated stages restore electrostatics and groups after `read_restart`; any hand-written consumer must do the same before `run` or `minimize`.
 - Define computes/variables before `thermo_style`. For group COM velocity use the native equal-style `vcm(group,dim)` function (there is no `compute vcm`). Minimization and dynamics stages print different thermo columns; parse the header, never assume fixed columns. Step counters reset per stage: never concatenate logs or trajectories across stages.
-- In scripted sweeps use globs or `find`, never `$(ls ...)`: `ls` is aliased to a colorized long listing in interactive shells here, and its escape codes become bogus path tokens.
+- In scripted sweeps use globs or `find`, never `$(ls ...)`: `ls` is often aliased to a colorized listing, and its escape codes become bogus path tokens.
 - `"$LMP_EXEC" -help | head` gets SIGPIPE and, under `set -o pipefail`, aborts the job with exit 13. Write `-help` to a file first, then read the file.
 - Aniso NPT with `fixedpoint 0 0 0` shows a stationary solid-minus-fluid temperature offset (about +15/-6 K) that vanishes in fixed-cell NVT stages; the uniform-background charge route prints the native PPPM net-charge warning. Both are expected.
 

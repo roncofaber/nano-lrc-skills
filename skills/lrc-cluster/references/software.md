@@ -17,11 +17,11 @@
 
 - Build on compute nodes via sbatch (a LAMMPS rebuild takes about 15 minutes on 24 cores).
 - Install into `install/<version>-<variant>/`. The cmake presets (`custom_*_u6.cmake`) and build scripts (`build_22Jul2025u6_*.sh`) sit in the app directory next to the sources, e.g. `/global/home/groups-sw/nano/software/rocky-8.x86_64/lammps/`. Add the modulefile to the group modulefiles directory.
-- Record what was built, from what commit or tarball, and the modulefile name in the project `AGENTS.md`.
+- Record what was built, from what commit or tarball, and the modulefile name next to the install (or in the project notes).
 
 ## GPUs
 
-- `etna_gpu` V100 nodes (free, `--account=nano --gres=gpu:V100:N`, N at most 2): `nvidia-smi` works on n0238 (Tesla V100-SXM2-16GB, driver 580.178.04, sm_70). The earlier broken-driver report no longer holds; confirm with a short `nvidia-smi` job if a node misbehaves.
+- `etna_gpu` V100 nodes (free, `--account=nano --gres=gpu:V100:N`, N at most 2, sm_70). If a node misbehaves, check it with a short `nvidia-smi` job.
 - `etna_gpu` K80 nodes: all down or drained, and sm_37 is below the CUDA 12 minimum anyway. Do not target them.
 - Paid GPU partitions (`ac_nanotheory`, ask first): es0 RTX 2080 Ti (sm_75), es1 A40/A100/V100/RTX 8000 (sm_86/80/70/75), es2 H100/H200 (sm_90). A CUDA build runs only on the architectures it was compiled for; `lammps/20250722u6-gpu` covers sm_50/70/75/80/86, which leaves out es2.
 

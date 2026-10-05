@@ -35,6 +35,9 @@ for dir in "$root"/skills/*/ "$root"/workflows/*/; do
             [[ -e "$(dirname "$md")/$target" ]] || fail "$rel" "broken link in ${md#"$dir"/}: $target"
         done < <(grep -oE '\]\([^) ]+\)' "$md" | sed -E 's/^\]\(//; s/\)$//')
     done < <(find "$dir" -name '*.md')
+    while IFS= read -r sh; do
+        bash -n "$sh" 2>/dev/null || fail "$rel" "shell syntax error in ${sh#"$dir"/}"
+    done < <(find "$dir" -type f \( -name '*.sh' -o -name '*.sbatch' \))
 done
 
 (( status == 0 )) && echo "OK: all skills valid"
