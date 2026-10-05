@@ -62,6 +62,25 @@ printf '#!/bin/bash\nif true; then\n' > "$root/skills/lrc-good/assets/broken.sba
 "$repo/check.sh" "$root" | grep -q "shell syntax error in assets/broken.sbatch"; check "broken asset script rejected" "$?" "0"
 rm "$root/skills/lrc-good/assets/broken.sbatch"
 
+# submit_chain.sh
+sub="$repo/workflows/comodino-campaigns/assets/submit_chain.sh"
+fake="$tmp/fakebin" camp="$tmp/scratch/06_kbr_pt111_f"
+mkdir -p "$fake" "$camp/03_interface/03_br_pt111/r01/01_prepare" "$camp/03_interface/03_br_pt111/r02/03_walker_starts/w07" \
+    "$camp/02_bulk/09_kbr_40pairs/r01/02_observe" "$camp/03_interface/03_br_pt111/r01/01_prepare/w01"
+printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' > "$fake/sbatch"; chmod +x "$fake/sbatch"
+submit() { PATH="$fake:$PATH" bash "$sub" "$@"; }
+out="$(submit "$camp/03_interface/03_br_pt111/r01/01_prepare")"
+grep -qx -- "--job-name=06i-brpt111-p01" <<< "$out"; check "bundle job name" "$?" "0"
+grep -q "RECORDS=$camp/03_interface/03_br_pt111/r01/records/01_prepare," <<< "$out"; check "bundle records" "$?" "0"
+out="$(submit "$camp/02_bulk/09_kbr_40pairs/r01/02_observe" nvt_sample)"
+grep -qx -- "--job-name=06b-kbr40p-o02" <<< "$out"; check "bulk observe job name" "$?" "0"
+out="$(submit "$camp/03_interface/03_br_pt111/r02/03_walker_starts/w07" nvt_sample)"
+grep -qx -- "--job-name=06i-brpt111-w07r02" <<< "$out"; check "branch job name" "$?" "0"
+grep -q "RECORDS=$camp/03_interface/03_br_pt111/r02/records/03_walker_starts/w07," <<< "$out"; check "branch records" "$?" "0"
+grep -q "START_STAGE=nvt_sample,CODE=$camp/99_jobs/comodino" <<< "$out"; check "branch code pin" "$?" "0"
+grep -q -- "--comment=mdwatch:stall=30,watch=$camp/03_interface/03_br_pt111/r02/03_walker_starts/w07" <<< "$out"; check "branch watch" "$?" "0"
+submit "$camp/03_interface/03_br_pt111/r01/01_prepare/w01" >/dev/null 2>&1; check "branch of a non-walker bundle rejected" "$?" "2"
+
 # install.sh
 src="$tmp/share" home="$tmp/home"
 mkdir -p "$src" "$home"
