@@ -56,7 +56,7 @@ Validate the engine first, before building anything (it needs no structures), on
 
 ## Walker starts for interface metadynamics
 
-- Prepare a suite's distinct walker starts with `python -m comodino.md.sampling.branches generate` from the accepted interface preparation (CoMoDInO `docs/workflows/walker_starts.md`); it writes `rNN/NN_walker_starts/wNN`, records in `rNN/records/NN_walker_starts/wNN/`. Count and duration (default 200 ps) are the user's decision.
+- Prepare a suite's distinct walker starts with `python -m comodino.md.sampling.branches generate` from the accepted interface preparation (CoMoDInO `docs/workflows/walker_starts.md`); it writes `rNN/NN_walker_starts/wNN`, records in `rNN/records/NN_walker_starts/wNN/`. Count, duration (default 200 ps) and whether branches start from evenly spaced frames of the accepted production (`"frames": "spaced"`) or from its final state are the user's decision.
 - Give each branch `comodino campaign policy`, an authorization and `--check-only`, then submit each as its own single-node job: `bash submit_chain.sh rNN/NN_walker_starts/wNN nvt_sample` (job name `<NN>i-<system>-wNN`). Run them concurrently on as many nodes as are free; they are independent until the suite.
 - After the branches finish: interface analysis per branch, `comodino campaign accept` per branch, then `branches spread` once for the set. The suite itself needs a common start for all walkers, unlike the branches.
 
