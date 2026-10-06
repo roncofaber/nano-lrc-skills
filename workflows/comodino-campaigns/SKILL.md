@@ -60,8 +60,19 @@ Validate the engine first, before building anything (it needs no structures), on
 - Give each branch `comodino campaign policy`, an authorization and `--check-only`, then submit each as its own single-node job: `bash submit_chain.sh rNN/NN_walker_starts/wNN nvt_sample` (job name `<NN>i-<system>-wNN`). Run them concurrently on as many nodes as are free; they are independent until the suite.
 - After the branches finish: interface analysis per branch, `comodino campaign accept` per branch, then `branches spread` once for the set. The suite itself needs a common start for all walkers, unlike the branches.
 
+## Shared-walker metadynamics suites
+
+Follow these steps in order; do not write your own launcher, review script or stage loop. Background: CoMoDInO `docs/workflows/metadynamics_suite.md`, section "Current recipe".
+
+1. Protocol: suite protocol schema 2 with CV plan schema 3 in `sources/rNN_NN_metadynamics.json`. Every numerical choice (CVs, grids, `hill_width` in grid points, hill weight, deposition, walls, sharing interval, `restart_every_steps`, duration, walker count) comes from the user's recorded decision; the generator refuses a hill width outside 1-3, a wall within 6 sigma of a soft grid edge and checkpoints not aligned with deposition and sharing.
+2. Generate with `python -m comodino.md.sampling.metadynamics generate` into `rNN/NN_metadynamics` (absolute registry path, folder not yet existing).
+3. For each walker: `comodino campaign policy rNN/NN_metadynamics/wNN` (approve the default per the delegated approvals; add the rank-count restart warning when walker sources ran on another rank count), and `authorization.json` copied to `rNN/records/NN_metadynamics/authorizations/wNN.json`.
+4. Check, then submit each stage as one job, one walker per node, all walkers starting together: `python -m comodino.md.sampling.metadynamics run ... --check-only` on the login node, then `bash` [assets/submit_suite.sh](assets/submit_suite.sh) `rNN/NN_metadynamics STAGE [etna|dirac1]` from `99_jobs` for `wall_ramp`, then `wall_relax`, then `metadynamics`, each only after the previous job ended with every walker reviewed `passed`. It runs [assets/suite_stage.sbatch](assets/suite_stage.sbatch) with as many nodes as walkers. Use etna or dirac1, never a mix within one job.
+5. A metadynamics job that ends normally needs no restart. If it fails, do not resubmit: record the failure, confirm the job is gone, and recover from the latest checkpoint all walkers share with `python -m comodino.md.sampling.recovery generate` and `recovery run` (as one job like step 4). If recovery refuses, stop and ask the user.
+
 ## Analysis
 
+- Redoing an acceptance after rerunning its analysis: `comodino campaign accept ... --supersede` keeps the old review as `NAME.superseded.N.json`; never delete records by hand.
 - Run trajectory analysis (`comodino campaign analysis`, `python -m comodino.md.analysis.cv_proposal`, RDFs) as a short etna sbatch job from `99_jobs`, never on the login node or in the agent's shell: it pins the shared node and hangs every other session on it. Read the resulting `report.json` and CSV files afterwards.
 - With a text-only model, read `report.json` and CSV files instead of opening `.png` or `.pdf` plots.
 

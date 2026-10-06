@@ -81,6 +81,24 @@ grep -q "START_STAGE=nvt_sample,CODE=$camp/99_jobs/comodino" <<< "$out"; check "
 grep -q -- "--comment=mdwatch:stall=30,watch=$camp/03_interface/03_br_pt111/r02/03_walker_starts/w07" <<< "$out"; check "branch watch" "$?" "0"
 submit "$camp/03_interface/03_br_pt111/r01/01_prepare/w01" >/dev/null 2>&1; check "branch of a non-walker bundle rejected" "$?" "2"
 
+# submit_suite.sh
+suite_sub="$repo/workflows/comodino-campaigns/assets/submit_suite.sh"
+suite="$camp/03_interface/03_br_pt111/r01/04_metadynamics"
+mkdir -p "$suite"
+printf '{"schema_version": 2, "walkers": ["w01", "w02", "w03"], "launch": "lammps_partition"}' > "$suite/suite.json"
+ssubmit() { PATH="$fake:$PATH" bash "$suite_sub" "$@"; }
+out="$(ssubmit "$suite" metadynamics)"
+grep -qx -- "--job-name=06i-brpt111-m" <<< "$out"; check "suite job name" "$?" "0"
+grep -qx -- "--nodes=3" <<< "$out"; check "suite one node per walker" "$?" "0"
+grep -qx -- "--account=nano" <<< "$out"; check "suite etna account" "$?" "0"
+grep -q "SUITE=$suite,STAGE=metadynamics,CODE=$camp/99_jobs/comodino" <<< "$out"; check "suite exports" "$?" "0"
+out="$(ssubmit "$suite" wall_ramp dirac1)"
+grep -qx -- "--account=dirac1" <<< "$out"; check "suite dirac1 account" "$?" "0"
+ssubmit "$suite" production >/dev/null 2>&1; check "unknown suite stage rejected" "$?" "2"
+ssubmit "$suite" metadynamics etna_bigmem >/dev/null 2>&1; check "non-24-core partition rejected" "$?" "2"
+printf '{"schema_version": 1, "walkers": ["w01"]}' > "$suite/suite.json"
+ssubmit "$suite" metadynamics >/dev/null 2>&1; check "schema 1 suite rejected" "$?" "1"
+
 # install.sh
 src="$tmp/share" home="$tmp/home"
 mkdir -p "$src" "$home"
