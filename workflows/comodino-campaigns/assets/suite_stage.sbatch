@@ -5,15 +5,14 @@
 #SBATCH --qos=normal
 #SBATCH --exclusive
 #SBATCH --nodes=12
-#SBATCH --ntasks-per-node=24
+#SBATCH --ntasks-per-node=24  # submit_suite.sh sets the partition's core count
 #SBATCH --cpus-per-task=1
 #SBATCH --time=60:00:00
 #SBATCH --output=slurm-%x-%j.out
 
 # One stage (wall_ramp, wall_relax or metadynamics) of a shared-walker suite: all walkers start together in one
-# mpirun split by LAMMPS -partition, one walker per node, then every walker is reviewed. Submit with
-# submit_suite.sh SUITE STAGE from CAMPAIGN/99_jobs; it sets the node count from the walker count and the account
-# for the partition.
+# mpirun split by LAMMPS -partition, one walker per node on all its cores, then every walker is reviewed. Submit
+# with submit_suite.sh SUITE STAGE [PARTITION] from CAMPAIGN/99_jobs; it sets nodes, cores per node and account.
 
 set -euo pipefail
 SUITE=${SUITE:?} STAGE=${STAGE:?} CODE=${CODE:?pin the campaign comodino worktree}

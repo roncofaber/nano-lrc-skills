@@ -92,12 +92,42 @@ grep -qx -- "--job-name=06i-brpt111-m" <<< "$out"; check "suite job name" "$?" "
 grep -qx -- "--nodes=3" <<< "$out"; check "suite one node per walker" "$?" "0"
 grep -qx -- "--account=nano" <<< "$out"; check "suite etna account" "$?" "0"
 grep -q "SUITE=$suite,STAGE=metadynamics,CODE=$camp/99_jobs/comodino" <<< "$out"; check "suite exports" "$?" "0"
+grep -qx -- "--ntasks-per-node=24" <<< "$out"; check "suite etna 24 cores" "$?" "0"
 out="$(ssubmit "$suite" wall_ramp dirac1)"
 grep -qx -- "--account=dirac1" <<< "$out"; check "suite dirac1 account" "$?" "0"
+out="$(ssubmit "$suite" wall_ramp etna_bigmem)"
+grep -qx -- "--ntasks-per-node=32" <<< "$out"; check "suite bigmem 32 cores" "$?" "0"
+out="$(ssubmit "$suite" wall_ramp etna_c40)"
+grep -qx -- "--ntasks-per-node=40" <<< "$out"; check "suite c40 40 cores" "$?" "0"
+grep -q -- "--exclude" <<< "$out"; check "no exclude without a file" "$?" "1"
+printf 'n0001.etna0,n0068.etna0\nn0214.etna0\n' > "$tmp/excluded.dat"
+out="$(EXCLUDE_NODES_FILE="$tmp/excluded.dat" ssubmit "$suite" metadynamics)"
+grep -qx -- "--exclude=n0001.etna0,n0068.etna0,n0214.etna0" <<< "$out"; check "multi-line exclude list flattened" "$?" "0"
 ssubmit "$suite" production >/dev/null 2>&1; check "unknown suite stage rejected" "$?" "2"
-ssubmit "$suite" metadynamics etna_bigmem >/dev/null 2>&1; check "non-24-core partition rejected" "$?" "2"
+ssubmit "$suite" metadynamics lr6 >/dev/null 2>&1; check "unsupported partition rejected" "$?" "2"
 printf '{"schema_version": 1, "walkers": ["w01"]}' > "$suite/suite.json"
 ssubmit "$suite" metadynamics >/dev/null 2>&1; check "schema 1 suite rejected" "$?" "1"
+
+# node_window.sh
+window="$repo/skills/lrc-cluster/assets/node_window.sh"
+cat > "$fake/sinfo" <<'SH'
+#!/bin/bash
+for a in "$@"; do [[ $prev == -p ]] && part=$a; prev=$a; done
+case $part in
+    etna) printf 'n1.etna0 idle\nn2.etna0 idle\nn3.etna0 idle*\nn4.etna0 alloc\nn5.etna0 idle\n' ;;
+    big) printf 'b1 idle\nb2 idle\n' ;;
+esac
+SH
+chmod +x "$fake/sinfo"
+nwin() { PATH="$fake:$PATH" bash "$window" "$@"; }
+out="$(nwin -n 3 -p big,etna -i 1 -t 0)"; rc=$?
+check "window opens" "$rc" "0"
+check "exact idle only" "$(tail -n1 <<< "$out")" "WINDOW etna n1.etna0,n2.etna0,n5.etna0"
+printf 'n2.etna0\n' > "$tmp/excl"
+nwin -n 3 -p etna -x "$tmp/excl" -i 1 -t 0 >/dev/null; check "excluded nodes not counted" "$?" "124"
+nwin -n 2 -p big -l "$tmp/window.log" -i 1 -t 0 >/dev/null
+grep -q "WINDOW big b1,b2" "$tmp/window.log"; check "window logged" "$?" "0"
+nwin -p etna >/dev/null 2>&1; check "count required" "$?" "2"
 
 # install.sh
 src="$tmp/share" home="$tmp/home"

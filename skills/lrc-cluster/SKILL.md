@@ -25,6 +25,7 @@ Operational conventions for nano group members running calculations on the LBL L
 | `es0`, `es1`, `es2` | `ac_nanotheory` | paid | GPU resources (es0 RTX 2080 Ti; es1 A40, A100, V100, RTX 8000; es2 H100, H200) |
 | other LRC partitions (`lr*`, `cf1`, `cm*`, ...) | - | paid or unverified | |
 
+- Use the whole node: request `--ntasks-per-node` equal to the partition's cores (24, 32 or 40) for MPI jobs that scale to it; a 24-rank job on a 32- or 40-core node leaves cores idle.
 - Submitting to a paid or unverified partition needs explicit user confirmation first.
 - QOS: `normal` for every free partition. List your associations with `sacctmgr -nP show assoc user=$USER format=account,partition,qos`.
 
@@ -38,6 +39,8 @@ sinfo -p etna_gpu -N -t idle,mix -h -O NodeList:14,Gres:14,GresUsed:24   # usabl
 squeue -u $USER                                       # your jobs
 ```
 
+For a multi-node job that must wait for N free nodes of one partition, run [assets/node_window.sh](assets/node_window.sh) `-n N [-p PARTS] [-x EXCLUDE_FILE] -l LOG` instead of polling by hand: it counts only nodes in the exact `idle` state (`sinfo -t idle` also lists unusable `idle*` nodes), removes excluded nodes after expanding node lists, logs every reading and prints `WINDOW PART nodes` when a window opens.
+
 etna is often fully allocated with many nodes drained or down. When it has no idle nodes, submit to `etna_bigmem` or `etna_c40` instead of queueing on `Priority`, and say so in the job name or notes since throughput differs.
 
 ## Job submission
@@ -47,7 +50,7 @@ etna is often fully allocated with many nodes drained or down. When it has no id
 - One job per configuration. Never loop rank counts or parameter points sequentially inside one allocation; submit independent jobs.
 - Automate multi-step work inside one job (a chain script or an upstream runner) rather than resubmitting one step per job, which wastes queue time and races with the files each step writes.
 - Never sleep-poll `squeue` in a loop. Use `mdwatch` if it is on your PATH (`lrc-mdwatch`); otherwise check back later.
-- Exclude nodes that fail jobs while SLURM reports them healthy: keep the list in a file and submit with `sbatch -x "$(<FILE)" [options] script.sh`.
+- Exclude nodes that fail jobs while SLURM reports them healthy: keep the list in a file and submit with `sbatch -x "$(tr -s ',\n ' ',' < FILE | sed 's/^,*//; s/,*$//')" [options] script.sh`; `-x "$(<FILE)"` breaks on a file with one node per line.
 
 ## sbatch gotchas
 
@@ -57,6 +60,8 @@ etna is often fully allocated with many nodes drained or down. When it has no id
 - `sbatch --export=VAR=x` REPLACES the environment (PATH, SLURM vars and HOME are stripped; multi-node orted daemons then fail). Use `--export=ALL,VAR=x`.
 - Relative paths passed through `--export` resolve against `SLURM_SUBMIT_DIR` inside the job. Pass absolute paths.
 - Module state does not persist between shells; load modules inside the script that uses them.
+- On etna, `srun` does not bind tasks to cores (`--cpu-bind=cores` has no effect; every task gets the whole step mask). A multi-rank launch through `srun` lets OpenMPI pin all ranks to core 0, about 1000x slower. Launch MPI with `mpirun --map-by ppr:CORES:node --bind-to core` inside the allocation; for several independent MPI programs in one job, use one `mpirun` with LAMMPS `-partition` (see `comodino-campaigns`) rather than one `srun` per program.
+- Users cannot ssh to compute nodes. To check a node in use (e.g. SMT), read `scontrol show node n0047.etna0` (`ThreadsPerCore=1` means SMT off); etna needs the full hostname.
 - NEVER rename directories that running jobs use. File IO keeps working (inode-based), but OpenMPI re-resolves the cwd by path at the next `mpirun` and dies with "Open RTE was unable to initialize properly ... attempting to get the cwd. Returned value -11". Rename only after every job in the tree has ended.
 
 ## MPI binding is mandatory on etna

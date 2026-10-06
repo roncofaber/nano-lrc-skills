@@ -31,7 +31,11 @@ mdwatch events 20       # last 20 transitions, one line each
 mdwatch show JOBID 60   # latest event JSON, workdir and the last 60 lines of stdout/stderr
 ```
 
-Never sleep-poll `squeue` or `mdwatch events` in a loop.
+Size `--timeout` above the job's expected duration (a 20 ns metadynamics suite runs about 45-50 h on etna; use 60 h, i.e. 216000 s). Never sleep-poll `squeue` or `mdwatch events` in a loop.
+
+## Long-lived watchers in agent sessions
+
+A background command can die silently with the agent session. For a watcher that must run for hours (e.g. `node_window.sh` from `lrc-cluster`), start it detached and attach to its log: `nohup bash node_window.sh -n 12 -l LOG > /dev/null 2>&1 & disown`, confirm it with `pgrep -f node_window.sh`, then wait in the background on `tail -f -n +1 LOG | grep -m1 -E '^[^ ]+ (WINDOW|timeout)'`. If the agent's wait dies, the watcher and its log survive; check `pgrep` before trusting a quiet log.
 
 ## Per-job options
 
