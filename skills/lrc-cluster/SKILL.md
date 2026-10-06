@@ -53,7 +53,7 @@ etna is often fully allocated with many nodes drained or down. When it has no id
 - One job per configuration. Never loop rank counts or parameter points sequentially inside one allocation; submit independent jobs.
 - Automate multi-step work inside one job (a chain script or an upstream runner) rather than resubmitting one step per job, which wastes queue time and races with the files each step writes.
 - Never sleep-poll `squeue` in a loop. Use `mdwatch` if it is on your PATH (`lrc-mdwatch`); otherwise check back later.
-- Exclude nodes that fail jobs while SLURM reports them healthy: keep the list in a file and submit with `sbatch -x "$(tr -s ',\n ' ',' < FILE | sed 's/^,*//; s/,*$//')" [options] script.sh`; `-x "$(<FILE)"` breaks on a file with one node per line.
+- Exclude nodes that fail jobs, or run slow in `node_bench.sbatch`, while SLURM reports them healthy: keep the list in a file and submit with `sbatch -x "$(tr -s ',\n ' ',' < FILE | sed 's/^,*//; s/,*$//')" [options] script.sh`; `-x "$(<FILE)"` breaks on a file with one node per line.
 
 ## sbatch gotchas
 
@@ -82,4 +82,5 @@ Intel MPI: `I_MPI_PIN=1 I_MPI_PIN_DOMAIN=core`, verify the pin map once with `I_
 - [assets/etna_cpu.sbatch](assets/etna_cpu.sbatch): free-partition CPU job with the header, submit-dir `cd`, thread pinning and bound `mpirun` on every allocated core. Replace the uppercase placeholders; pick the partition at submission (`sbatch -p etna_c40 ...`).
 - [assets/partitions.sh](assets/partitions.sh): partition, account and cores per node for the free CPU partitions.
 - [assets/node_window.sh](assets/node_window.sh): wait for N usable idle nodes of one partition.
+- [assets/node_bench.sbatch](assets/node_bench.sbatch): 1-minute compute benchmark of one node (`sbatch -p PART -w NODE`), run as a pair with a known-good node; a node passing SLURM, scratch and SMT checks can still run MD 1.5-2x slower. Exclude nodes more than about 25% below their pair.
 - [references/software.md](references/software.md): Lmod module paths, Python environments, building software, GPU compatibility, Jupyter.
