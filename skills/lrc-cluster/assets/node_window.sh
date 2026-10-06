@@ -1,12 +1,12 @@
 #!/bin/bash
 # Wait until N usable idle nodes are free in one partition, then print the partition and node list.
 #   node_window.sh -n N [-p PART[,PART...]] [-x EXCLUDE_FILE] [-i SECONDS] [-t SECONDS] [-l LOGFILE]
-# Defaults: -p etna,etna_bigmem,etna_c40 -i 300 -t 172800, log to stdout. Counts only nodes in the exact "idle"
+# Defaults: -p etna,etna_bigmem,etna_c40 -i 300 -t 172800, readings to stderr (or -l LOGFILE). Counts only nodes in the exact "idle"
 # state ("idle*", "idle~" and the like are not usable), expands node lists before removing excluded nodes, and
 # writes one timestamped line per reading so a stopped watcher is visible in its log. When a window opens it prints
-# "WINDOW PART n1,n2,..." on stdout (and logs it) and exits 0; it exits 124 on timeout.
+# only "WINDOW PART n1,n2,..." on stdout (and logs it) and exits 0; it exits 124 on timeout.
 set -euo pipefail
-need="" parts=etna,etna_bigmem,etna_c40 exclude_file="" interval=300 timeout=172800 log=/dev/stdout
+need="" parts=etna,etna_bigmem,etna_c40 exclude_file="" interval=300 timeout=172800 log=/dev/stderr
 while getopts "n:p:x:i:t:l:" opt; do
     case $opt in
         n) need=$OPTARG ;; p) parts=$OPTARG ;; x) exclude_file=$OPTARG ;;
@@ -32,7 +32,7 @@ while :; do
         readings+=("$part=${#usable[@]}")
         if (( ${#usable[@]} >= need )); then
             line="WINDOW $part $(IFS=,; echo "${usable[*]:0:$need}")"
-            [[ $log == /dev/stdout ]] || echo "$(date +%FT%T) $line" >> "$log"
+            [[ $log == /dev/stderr ]] || echo "$(date +%FT%T) $line" >> "$log"
             echo "$line"
             exit 0
         fi

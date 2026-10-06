@@ -120,9 +120,10 @@ esac
 SH
 chmod +x "$fake/sinfo"
 nwin() { PATH="$fake:$PATH" bash "$window" "$@"; }
-out="$(nwin -n 3 -p big,etna -i 1 -t 0)"; rc=$?
+out="$(nwin -n 3 -p big,etna -i 1 -t 0 2>/dev/null)"; rc=$?
 check "window opens" "$rc" "0"
-check "exact idle only" "$(tail -n1 <<< "$out")" "WINDOW etna n1.etna0,n2.etna0,n5.etna0"
+check "exact idle only, stdout is the window line only" "$out" "WINDOW etna n1.etna0,n2.etna0,n5.etna0"
+check "no window prints nothing on stdout" "$(nwin -n 9 -p big -i 1 -t 0 2>/dev/null)" ""
 printf 'n2.etna0\n' > "$tmp/excl"
 nwin -n 3 -p etna -x "$tmp/excl" -i 1 -t 0 >/dev/null; check "excluded nodes not counted" "$?" "124"
 nwin -n 2 -p big -l "$tmp/window.log" -i 1 -t 0 >/dev/null
