@@ -1,7 +1,9 @@
 #!/bin/bash
 # Submit one comodino chain job with a short job name derived from the bundle path.
 # Run from CAMPAIGN/99_jobs:
-#   submit_chain.sh BUNDLE [START_STAGE] [extra sbatch options...]
+#   submit_chain.sh BUNDLE [START_STAGE [PARTITION]] [extra sbatch options...]
+# PARTITION is etna (default), etna_bigmem, etna_c40 or dirac1; the job takes every core of its node (partition
+# table: lrc-cluster assets/partitions.sh). Nodes in $EXCLUDE_NODES_FILE are excluded.
 # BUNDLE is CAMPAIGN/FAMILY/NN_system/rNN/NN_bundle, or a walker-start branch
 # CAMPAIGN/FAMILY/NN_system/rNN/NN_walker_starts/wNN. The job name is
 #   <campaign NN><family b|i>-<system>-<bundle initial><bundle NN | wNN>[r<replica>]
@@ -12,7 +14,21 @@
 set -euo pipefail
 BUNDLE=$(readlink -f "${1:?usage: submit_chain.sh BUNDLE [START_STAGE] [sbatch options]}")
 START_STAGE=${2:-minimize}
-shift $(( $# >= 2 ? 2 : 1 ))
+PARTITION=${3:-etna}
+shift $(( $# >= 3 ? 3 : $# ))
+here=$(dirname "$(readlink -f "$0")")
+partitions=""
+for candidate in "$here/../../../skills/lrc-cluster/assets/partitions.sh" "$here/partitions.sh" \
+        "$HOME/.agents/skills/lrc-cluster/assets/partitions.sh" "$HOME/.claude/skills/lrc-cluster/assets/partitions.sh"; do
+    [[ -f $candidate ]] && { partitions=$candidate; break; }
+done
+[[ -n $partitions ]] || { echo "partitions.sh (lrc-cluster skill) not found; install the shared skills" >&2; exit 2; }
+read -r _ account cores < <(bash "$partitions" "$PARTITION") || exit 2
+exclude=()
+if [[ -n "${EXCLUDE_NODES_FILE:-}" ]]; then
+    nodes=$(tr -s ',\n ' ',' < "$EXCLUDE_NODES_FILE" | sed 's/^,*//; s/,*$//')
+    [[ -n "$nodes" ]] && exclude=(--exclude="$nodes")
+fi
 
 branch=""
 if [[ $(basename "$BUNDLE") =~ ^w[0-9]{2}$ && $(basename "$(dirname "$BUNDLE")") == *_walker_starts ]]; then
@@ -42,6 +58,7 @@ name="${campaign_nn}${family}-${system}-${bundle}"
 
 RECORDS="$replica_dir/records/$bundle_name${branch:+/$branch}"
 CODE="$campaign_dir/99_jobs/comodino"
-exec sbatch --job-name="$name" --comment="mdwatch:stall=30,watch=$BUNDLE" \
+exec sbatch --job-name="$name" --partition="$PARTITION" --account="$account" --ntasks-per-node="$cores" \
+    ${exclude[@]+"${exclude[@]}"} --comment="mdwatch:stall=30,watch=$BUNDLE" \
     --export="ALL,BUNDLE=$BUNDLE,RECORDS=$RECORDS,START_STAGE=$START_STAGE,CODE=$CODE" \
-    "$@" "$(dirname "$(readlink -f "$0")")/comodino_chain.sbatch"
+    "$@" "$here/comodino_chain.sbatch"

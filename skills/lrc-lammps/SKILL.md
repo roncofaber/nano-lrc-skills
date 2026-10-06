@@ -25,13 +25,13 @@ For a single run, start from `assets/etna_cpu.sbatch` in `lrc-cluster`. For a Co
 ```bash
 module load lammps/20250722u6-gcc
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-mpirun --bind-to core --map-by core -np 24 "$LMP_EXEC" -in input -screen none
+mpirun --bind-to core --map-by core -np $(( SLURM_CPUS_ON_NODE * SLURM_NNODES )) "$LMP_EXEC" -in input -screen none
 ```
 
 The `-intel25` build uses Intel MPI: pin through the environment instead (see "MPI binding" in `lrc-cluster`).
 
-- 24 ranks on one etna node is the sweet spot for systems of order 6000 atoms (60% parallel efficiency). 2-node/48-rank is not worth it at that size.
-- Performance reference for ~6k atoms with PPPM + SHAKE: about 8 ns/day at 24 ranks (see [references/performance.md](references/performance.md)).
+- Run on all cores of one node (24 on etna, 32 on etna_bigmem, 40 on etna_c40; see `lrc-cluster`). For systems of order 6000 atoms one node is the sweet spot (60% parallel efficiency at 24 ranks); 2 nodes are not worth it at that size. The 32- and 40-core nodes have not been benchmarked here yet: when a campaign first uses them, record ns/day at full node in its notes.
+- Performance reference for ~6k atoms with PPPM + SHAKE: about 8 ns/day at 24 ranks on etna (see [references/performance.md](references/performance.md)); an ~8.5k-atom interface walker ran ~11 ns/day at 24 ranks on etna and dirac1, ~12.5 at 24 ranks on etna_bigmem.
 - Size `--time` from measured throughput: a ~6k-atom chain of 5.52M steps at 0.5 fs runs in about 7.5 h at 204 steps/s on one 24-rank node, so 12 h fits with margin. Larger interface systems are slower; benchmark first. For multi-stage chains, support resume from the last completed stage's restart file (e.g. a `START_STAGE` variable checked against the stage list).
 
 ## Benchmarking

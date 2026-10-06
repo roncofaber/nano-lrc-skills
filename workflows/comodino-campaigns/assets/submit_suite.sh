@@ -3,8 +3,8 @@
 # Run from CAMPAIGN/99_jobs:
 #   submit_suite.sh SUITE STAGE [PARTITION] [extra sbatch options...]
 # SUITE is CAMPAIGN/FAMILY/NN_system/rNN/NN_metadynamics, STAGE one of wall_ramp, wall_relax, metadynamics, PARTITION
-# etna (default, 24 cores), dirac1 (24, account dirac1), etna_bigmem (32) or etna_c40 (40). All stages of a suite
-# should use the same partition: a stage started on another rank count logs the restart rank-count warning. Nodes
+# etna (default), etna_bigmem, etna_c40 or dirac1 (cores and account from lrc-cluster assets/partitions.sh); each
+# walker gets every core of its node. Stages may run on different partitions (comodino records the rank change). Nodes
 # listed in $EXCLUDE_NODES_FILE (one or more comma- or newline-separated names) are excluded. The job name is
 # <campaign NN><b|i>-<system>-<stage initial>, e.g. 01i-naau111-m; CODE is CAMPAIGN/99_jobs/comodino.
 set -euo pipefail
@@ -14,13 +14,14 @@ PARTITION=${3:-etna}
 shift $(( $# >= 3 ? 3 : 2 ))
 
 case "$STAGE" in wall_ramp|wall_relax|metadynamics) ;; *) echo "unknown stage $STAGE" >&2; exit 2 ;; esac
-case "$PARTITION" in
-    etna) account=nano cores=24 ;;
-    etna_bigmem) account=nano cores=32 ;;
-    etna_c40) account=nano cores=40 ;;
-    dirac1) account=dirac1 cores=24 ;;
-    *) echo "suites run on etna, etna_bigmem, etna_c40 or dirac1, not $PARTITION" >&2; exit 2 ;;
-esac
+here=$(dirname "$(readlink -f "$0")")
+partitions=""
+for candidate in "$here/../../../skills/lrc-cluster/assets/partitions.sh" "$here/partitions.sh" \
+        "$HOME/.agents/skills/lrc-cluster/assets/partitions.sh" "$HOME/.claude/skills/lrc-cluster/assets/partitions.sh"; do
+    [[ -f $candidate ]] && { partitions=$candidate; break; }
+done
+[[ -n $partitions ]] || { echo "partitions.sh (lrc-cluster skill) not found; install the shared skills" >&2; exit 2; }
+read -r _ account cores < <(bash "$partitions" "$PARTITION") || exit 2
 exclude=()
 if [[ -n "${EXCLUDE_NODES_FILE:-}" ]]; then
     nodes=$(tr -s ',\n ' ',' < "$EXCLUDE_NODES_FILE" | sed 's/^,*//; s/,*$//')
@@ -47,4 +48,4 @@ exec sbatch --job-name="$name" --partition="$PARTITION" --account="$account" --n
     --ntasks-per-node="$cores" ${exclude[@]+"${exclude[@]}"} \
     --comment="mdwatch:stall=30,watch=$SUITE" \
     --export="ALL,SUITE=$SUITE,STAGE=$STAGE,CODE=$campaign_dir/99_jobs/comodino" \
-    "$@" "$(dirname "$(readlink -f "$0")")/suite_stage.sbatch"
+    "$@" "$here/suite_stage.sbatch"

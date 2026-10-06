@@ -13,19 +13,22 @@ Operational conventions for nano group members running calculations on the LBL L
 - `crontab` and `scrontab` may be disabled for your account. Run recurring tasks as systemd user timers (`systemctl --user list-timers`); they survive logout only with linger enabled (`loginctl show-user $USER -p Linger`).
 - Long-lived project data belongs on scratch, `/global/scratch/users/$USER/`, not in `$HOME`.
 
+## Use every core of the node
+
+One MPI rank per allocated core, on whatever partition the job lands: 24 on etna and dirac1, 32 on etna_bigmem, 40 on etna_c40 ([assets/partitions.sh](assets/partitions.sh) is the table scripts read). Never hard-code 24: request whole nodes (`--exclusive`, `--ntasks-per-node` = the partition's cores) and compute the rank count inside the job as `$(( SLURM_CPUS_ON_NODE * SLURM_NNODES ))`, as [assets/etna_cpu.sbatch](assets/etna_cpu.sbatch) does. A run may continue on a different partition: restarts do not depend on the rank count. Use fewer ranks only for a measured reason (e.g. a benchmark showing no gain), and record it.
+
 ## Partitions and accounts
 
 | Partition | Account | Cost | Use |
 |-----------|---------|------|-----|
 | `etna`    | `nano`  | free, preferred | CPU MD work (24-core, 64 GB nodes) |
 | `etna_gpu` | `nano` | free | V100 GPU runs (sm_70) |
-| `etna_bigmem` | `nano` | free | 32-core, 95 GB etna nodes; use `--ntasks=32` |
-| `etna_c40` | `nano` | free | 40-core, 96 GB etna nodes; use `--ntasks=40` |
+| `etna_bigmem` | `nano` | free | 32-core, 95 GB etna nodes |
+| `etna_c40` | `nano` | free | 40-core, 96 GB etna nodes |
 | `dirac1`  | `dirac1` | free | also accessible; the `nano` account is rejected here |
 | `es0`, `es1`, `es2` | `ac_nanotheory` | paid | GPU resources (es0 RTX 2080 Ti; es1 A40, A100, V100, RTX 8000; es2 H100, H200) |
 | other LRC partitions (`lr*`, `cf1`, `cm*`, ...) | - | paid or unverified | |
 
-- Use the whole node: request `--ntasks-per-node` equal to the partition's cores (24, 32 or 40) for MPI jobs that scale to it; a 24-rank job on a 32- or 40-core node leaves cores idle.
 - Submitting to a paid or unverified partition needs explicit user confirmation first.
 - QOS: `normal` for every free partition. List your associations with `sacctmgr -nP show assoc user=$USER format=account,partition,qos`.
 
@@ -45,7 +48,7 @@ etna is often fully allocated with many nodes drained or down. When it has no id
 
 ## Job submission
 
-- Standard CPU header: `--account=nano --partition=etna --qos=normal --exclusive`, one task per rank (`--ntasks=N --cpus-per-task=1`), bounded `--time` sized from measured throughput, not step counts alone.
+- Standard CPU header: `--account=nano --partition=etna --qos=normal --exclusive --cpus-per-task=1`, ranks from the allocation (above), bounded `--time` sized from measured throughput, not step counts alone.
 - Submit with `sbatch`. Never hold interactive `salloc` sessions for real work; they block the session and die with it.
 - One job per configuration. Never loop rank counts or parameter points sequentially inside one allocation; submit independent jobs.
 - Automate multi-step work inside one job (a chain script or an upstream runner) rather than resubmitting one step per job, which wastes queue time and races with the files each step writes.
@@ -76,5 +79,7 @@ Intel MPI: `I_MPI_PIN=1 I_MPI_PIN_DOMAIN=core`, verify the pin map once with `I_
 
 ## References
 
-- [assets/etna_cpu.sbatch](assets/etna_cpu.sbatch): free-partition CPU job with the header, submit-dir `cd`, thread pinning and bound `mpirun`. Replace the uppercase placeholders.
+- [assets/etna_cpu.sbatch](assets/etna_cpu.sbatch): free-partition CPU job with the header, submit-dir `cd`, thread pinning and bound `mpirun` on every allocated core. Replace the uppercase placeholders; pick the partition at submission (`sbatch -p etna_c40 ...`).
+- [assets/partitions.sh](assets/partitions.sh): partition, account and cores per node for the free CPU partitions.
+- [assets/node_window.sh](assets/node_window.sh): wait for N usable idle nodes of one partition.
 - [references/software.md](references/software.md): Lmod module paths, Python environments, building software, GPU compatibility, Jupyter.

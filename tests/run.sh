@@ -129,6 +129,29 @@ nwin -n 2 -p big -l "$tmp/window.log" -i 1 -t 0 >/dev/null
 grep -q "WINDOW big b1,b2" "$tmp/window.log"; check "window logged" "$?" "0"
 nwin -p etna >/dev/null 2>&1; check "count required" "$?" "2"
 
+# partitions.sh
+part="$repo/skills/lrc-cluster/assets/partitions.sh"
+check "etna cores" "$(bash "$part" etna)" "etna nano 24"
+check "bigmem cores" "$(bash "$part" etna_bigmem)" "etna_bigmem nano 32"
+check "c40 cores" "$(bash "$part" etna_c40)" "etna_c40 nano 40"
+check "dirac1 account" "$(bash "$part" dirac1)" "dirac1 dirac1 24"
+bash "$part" lr6 >/dev/null 2>&1; check "unknown partition rejected" "$?" "2"
+
+# templates take ranks from the allocation
+for f in skills/lrc-cluster/assets/etna_cpu.sbatch workflows/comodino-campaigns/assets/comodino_chain.sbatch; do
+    grep -qE '^#SBATCH --ntasks=' "$repo/$f"; check "$f has no fixed --ntasks" "$?" "1"
+    grep -q 'SLURM_CPUS_ON_NODE' "$repo/$f"; check "$f derives ranks from the allocation" "$?" "0"
+done
+
+# submit_chain.sh partition argument
+out="$(submit "$camp/03_interface/03_br_pt111/r01/01_prepare" minimize etna_c40)"
+grep -qx -- "--partition=etna_c40" <<< "$out"; check "chain partition" "$?" "0"
+grep -qx -- "--ntasks-per-node=40" <<< "$out"; check "chain c40 whole node" "$?" "0"
+out="$(submit "$camp/03_interface/03_br_pt111/r01/01_prepare")"
+grep -qx -- "--ntasks-per-node=24" <<< "$out"; check "chain etna default whole node" "$?" "0"
+out="$(EXCLUDE_NODES_FILE="$tmp/excluded.dat" submit "$camp/03_interface/03_br_pt111/r01/01_prepare" minimize etna)"
+grep -qx -- "--exclude=n0001.etna0,n0068.etna0,n0214.etna0" <<< "$out"; check "chain exclude list" "$?" "0"
+
 # install.sh
 src="$tmp/share" home="$tmp/home"
 mkdir -p "$src" "$home"
