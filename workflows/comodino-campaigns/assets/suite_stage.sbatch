@@ -10,9 +10,10 @@
 #SBATCH --time=60:00:00
 #SBATCH --output=slurm-%x-%j.out
 
-# One stage (wall_ramp, wall_relax or metadynamics) of a shared-walker suite: all walkers start together in one
-# mpirun split by LAMMPS -partition, one walker per node on all its cores, then every walker is reviewed. Submit
-# with submit_suite.sh SUITE STAGE [PARTITION] from CAMPAIGN/99_jobs; it sets nodes, cores per node and account.
+# One or more stages (wall_ramp, wall_relax, metadynamics; STAGE may be a comma-separated list run in order) of a
+# shared-walker suite: all walkers start together in one mpirun split by LAMMPS -partition, one walker per node on all
+# its cores, then every walker is reviewed; a stage that does not pass ends the job. Submit with
+# submit_suite.sh SUITE STAGE [PARTITION] from CAMPAIGN/99_jobs; it sets nodes, cores per node and account.
 
 set -euo pipefail
 SUITE=${SUITE:?} STAGE=${STAGE:?} CODE=${CODE:?pin the campaign comodino worktree}
@@ -30,6 +31,9 @@ printf '["mpirun", "--map-by", "ppr:%s:node", "--bind-to", "core", "-np", "%s", 
     "$SLURM_NTASKS_PER_NODE" "$SLURM_NTASKS" > "$launcher"
 
 echo "comodino $(git -C "$CODE" rev-parse --short HEAD)  engine $MODULE $LMP $(sha256sum "$LMP" | cut -d' ' -f1)"
-echo "suite $SUITE stage $STAGE  nodes $SLURM_JOB_NODELIST"
-python -m comodino.md.sampling.metadynamics run --bundle "$SUITE" --stage "$STAGE" --reviews "$RECORDS" \
-    --authorizations "$RECORDS/authorizations" --engine "$LMP" --launcher "$launcher"
+echo "suite $SUITE stages $STAGE  nodes $SLURM_JOB_NODELIST"
+for stage in ${STAGE//,/ }; do
+    echo "$(date +%FT%T) stage $stage"
+    python -m comodino.md.sampling.metadynamics run --bundle "$SUITE" --stage "$stage" --reviews "$RECORDS" \
+        --authorizations "$RECORDS/authorizations" --engine "$LMP" --launcher "$launcher"
+done

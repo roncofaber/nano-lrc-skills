@@ -2,18 +2,23 @@
 # Submit one stage of a shared-walker suite as one job, one walker per node, every core of the node used.
 # Run from CAMPAIGN/99_jobs:
 #   submit_suite.sh SUITE STAGE [PARTITION] [extra sbatch options...]
-# SUITE is CAMPAIGN/FAMILY/NN_system/rNN/NN_metadynamics, STAGE one of wall_ramp, wall_relax, metadynamics, PARTITION
+# SUITE is CAMPAIGN/FAMILY/NN_system/rNN/NN_metadynamics, STAGE one of wall_ramp, wall_relax, metadynamics, or a
+# comma-separated list run in order in the same allocation (e.g. wall_ramp,wall_relax,metadynamics): the job stops at
+# the first stage whose walker reviews do not all pass, and the nodes are not given back between stages. PARTITION
 # etna (default), etna_bigmem, etna_c40 or dirac1 (cores and account from lrc-cluster assets/partitions.sh); each
 # walker gets every core of its node. Stages may run on different partitions (comodino records the rank change). Nodes
 # listed in $EXCLUDE_NODES_FILE (one or more comma- or newline-separated names) are excluded. The job name is
-# <campaign NN><b|i>-<system>-<stage initial>, e.g. 01i-naau111-m; CODE is CAMPAIGN/99_jobs/comodino.
+# <campaign NN><b|i>-<system>-<stage initials>, e.g. 01i-naau111-m or 01i-naau111-wwm; CODE is CAMPAIGN/99_jobs/comodino.
 set -euo pipefail
 SUITE=$(readlink -f "${1:?usage: submit_suite.sh SUITE STAGE [PARTITION] [sbatch options]}")
 STAGE=${2:?usage: submit_suite.sh SUITE STAGE [PARTITION] [sbatch options]}
 PARTITION=${3:-etna}
 shift $(( $# >= 3 ? 3 : 2 ))
 
-case "$STAGE" in wall_ramp|wall_relax|metadynamics) ;; *) echo "unknown stage $STAGE" >&2; exit 2 ;; esac
+initials=""
+for stage in ${STAGE//,/ }; do
+    case "$stage" in wall_ramp|wall_relax|metadynamics) initials+=${stage:0:1} ;; *) echo "unknown stage $stage" >&2; exit 2 ;; esac
+done
 here=$(dirname "$(readlink -f "$0")")
 partitions=""
 for candidate in "$here/../../../skills/lrc-cluster/assets/partitions.sh" "$here/partitions.sh" \
@@ -41,7 +46,7 @@ case $(basename "$family_dir") in
 esac
 campaign_nn=$(basename "$campaign_dir" | grep -oE '^[0-9]+' || true)
 system=$(basename "$system_dir" | sed -E 's/^[0-9]+_//; s/pairs?$/p/; s/_//g')
-name="${campaign_nn}${family}-${system}-${STAGE:0:1}"
+name="${campaign_nn}${family}-${system}-${initials}"
 [[ $(basename "$replica_dir") == r01 ]] || name+="$(basename "$replica_dir")"
 
 exec sbatch --job-name="$name" --partition="$PARTITION" --account="$account" --nodes="$walkers" \

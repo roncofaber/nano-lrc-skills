@@ -42,7 +42,7 @@ sinfo -p etna_gpu -N -t idle,mix -h -O NodeList:14,Gres:14,GresUsed:24   # usabl
 squeue -u $USER                                       # your jobs
 ```
 
-For a multi-node job that must wait for N free nodes of one partition, run [assets/node_window.sh](assets/node_window.sh) `-n N [-p PARTS] [-x EXCLUDE_FILE] -l LOG` instead of polling by hand: it counts only nodes in the exact `idle` state (`sinfo -t idle` also lists unusable `idle*` nodes), removes excluded nodes after expanding node lists, logs every reading and prints `WINDOW PART nodes` when a window opens.
+For a multi-node job that must wait for N free nodes of one partition, run [assets/node_window.sh](assets/node_window.sh) `-n N [-p PARTS] [-x EXCLUDE_FILE] -l LOG` instead of polling by hand: it counts only nodes in the exact `idle` state (`sinfo -t idle` also lists unusable `idle*` nodes), removes excluded nodes after expanding node lists, logs every reading and prints `WINDOW PART nodes` when a window opens. To have the watcher submit the job itself, give it a queue file with one command per line, e.g. `bash submit_suite.sh SUITE wall_ramp,wall_relax,metadynamics $WINDOW_PARTITION`: with `-q QUEUE` it runs the first line on each window (with `WINDOW_PARTITION` and `WINDOW_NODES` set), removes it, logs `RUN`, the output and `EXIT rc`, and keeps watching until the queue is empty. Append lines to the queue while it runs; run it detached (`lrc-mdwatch`) so a window is never missed because an agent session died.
 
 etna is often fully allocated with many nodes drained or down. When it has no idle nodes, submit to `etna_bigmem` or `etna_c40` instead of queueing on `Priority`, and say so in the job name or notes since throughput differs.
 

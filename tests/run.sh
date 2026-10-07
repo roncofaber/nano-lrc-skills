@@ -103,6 +103,11 @@ grep -q -- "--exclude" <<< "$out"; check "no exclude without a file" "$?" "1"
 printf 'n0001.etna0,n0068.etna0\nn0214.etna0\n' > "$tmp/excluded.dat"
 out="$(EXCLUDE_NODES_FILE="$tmp/excluded.dat" ssubmit "$suite" metadynamics)"
 grep -qx -- "--exclude=n0001.etna0,n0068.etna0,n0214.etna0" <<< "$out"; check "multi-line exclude list flattened" "$?" "0"
+out="$(ssubmit "$suite" wall_ramp,wall_relax,metadynamics etna_bigmem)"
+grep -q "STAGE=wall_ramp,wall_relax,metadynamics," <<< "$out"; check "stage list passed to one job" "$?" "0"
+grep -qx -- "--job-name=06i-brpt111-wwm" <<< "$out"; check "stage list job name" "$?" "0"
+ssubmit "$suite" wall_ramp,production >/dev/null 2>&1; check "unknown stage in list rejected" "$?" "2"
+grep -q 'for stage in ${STAGE//,/ }' "$repo/workflows/comodino-campaigns/assets/suite_stage.sbatch"; check "suite job runs the stage list in order" "$?" "0"
 ssubmit "$suite" production >/dev/null 2>&1; check "unknown suite stage rejected" "$?" "2"
 ssubmit "$suite" metadynamics lr6 >/dev/null 2>&1; check "unsupported partition rejected" "$?" "2"
 printf '{"schema_version": 1, "walkers": ["w01"]}' > "$suite/suite.json"
@@ -129,6 +134,17 @@ nwin -n 3 -p etna -x "$tmp/excl" -i 1 -t 0 >/dev/null; check "excluded nodes not
 nwin -n 2 -p big -l "$tmp/window.log" -i 1 -t 0 >/dev/null
 grep -q "WINDOW big b1,b2" "$tmp/window.log"; check "window logged" "$?" "0"
 nwin -p etna >/dev/null 2>&1; check "count required" "$?" "2"
+
+# node_window.sh queue: one command per window, run with the window in the environment, then the next
+printf '%s\n' 'echo "first $WINDOW_PARTITION $WINDOW_NODES" >> "$Q_OUT"' 'echo second >> "$Q_OUT"' > "$tmp/queue"
+Q_OUT="$tmp/q.out" nwin -n 2 -p big -q "$tmp/queue" -l "$tmp/q.log" -i 0 -t 5 >/dev/null; rc=$?
+check "queue drained exits 0" "$rc" "0"
+check "queue commands run in order with the window" "$(cat "$tmp/q.out")" "$(printf 'first big b1,b2\nsecond')"
+check "queue file emptied" "$(wc -l < "$tmp/queue")" "0"
+grep -q "RUN echo second" "$tmp/q.log"; check "queue command logged" "$?" "0"
+printf 'false\n' > "$tmp/queue"
+nwin -n 2 -p big -q "$tmp/queue" -l "$tmp/q.log" -i 0 -t 5 >/dev/null
+grep -q "EXIT 1 false" "$tmp/q.log"; check "failed queue command logged" "$?" "0"
 
 # partitions.sh
 part="$repo/skills/lrc-cluster/assets/partitions.sh"

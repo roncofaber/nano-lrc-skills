@@ -35,7 +35,12 @@ Size `--timeout` above the job's expected duration (a 20 ns metadynamics suite r
 
 ## Long-lived watchers in agent sessions
 
-A background command can die silently with the agent session. For a watcher that must run for hours (e.g. `node_window.sh` from `lrc-cluster`), start it detached and attach to its log: `nohup bash node_window.sh -n 12 -l LOG > /dev/null 2>&1 & disown`, confirm it with `pgrep -f node_window.sh`, then wait in the background on `tail -f -n +1 LOG | grep -m1 -E '^[^ ]+ (WINDOW|timeout)'`. If the agent's wait dies, the watcher and its log survive; check `pgrep` before trusting a quiet log.
+Agent background commands are not reliable hosts for waits of more than a few hours: on Lawrencium they have died silently, with no output and no notification, three times in one campaign, once missing a node window by 2 h. Design so nothing depends on the agent noticing in time:
+
+- Never make a submission wait on the agent. Stages that follow each other go in one job (`comodino-campaigns`: `submit_suite.sh SUITE wall_ramp,wall_relax,metadynamics`), and a submission that waits for free nodes goes in the queue of a detached `node_window.sh -q` (`lrc-cluster`), which submits it itself when the window opens.
+- Start anything that must outlive the session detached: `setsid nohup bash node_window.sh ... -l LOG > /dev/null 2>&1 &`. It inherits your environment, keeps running when the agent dies, and writes every reading to its log.
+- A background `mdwatch wait` is only a wake-up call. The record is mdwatch's event store (`mdwatch events`) and the watcher's log, which persist whatever happens to the agent; ntfy also pushes every job event to the user.
+- At the start of every turn, list your watchers with `ps -u $USER -o pid,etime,args | grep -E 'mdwatch wait|node_window'` and read `mdwatch events 20` and the watcher log tails. Re-attach any wait that died; do not assume a silent background command is still running.
 
 ## Per-job options
 
