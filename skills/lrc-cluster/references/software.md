@@ -7,7 +7,7 @@
 
 ## Python environments
 
-- Keep project Python envs in your own miniforge (`$HOME/miniforge3/envs/<env>`). For MD and electrolyte work use Python 3.12 with numpy, MDAnalysis, SciPy, ASE, PACKMOL, pytest and editable installs of mdinterface and comodino.
+- Keep project Python envs in your own miniforge (`$HOME/miniforge3/envs/<env>`). The group convention for MD and electrolyte work is Python 3.12 with numpy, MDAnalysis, SciPy, ASE, PACKMOL, pytest and editable installs of mdinterface and comodino.
 - `/usr/bin/python3` is Python 3.6. Anything run by systemd timers or other non-login contexts gets that interpreter unless it calls an env's `python` by absolute path.
 - Conda envs have no `bin/activate`; prepend its `bin/` to PATH (or `source ~/miniforge3/etc/profile.d/conda.sh && conda activate <env>`) so `shutil.which("packmol")` resolves; current mdinterface installs the PACKMOL executable from PyPI into the env's `bin/`, so an unactivated shell still cannot find it.
 - Editable installs follow the checkout live: a `git pull` or branch switch changes the code every running job imports. Campaigns pin a worktree instead (see `comodino-campaigns`).

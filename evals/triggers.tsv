@@ -1,0 +1,18 @@
+# expected skills (comma-separated, or none)	user request
+lrc-cluster	Write an sbatch script for a 2-node OpenMPI job on etna.
+lrc-cluster	My job died with "There are not enough slots available in the system to satisfy the 24 slots".
+lrc-cluster	Which account do I use on dirac1?
+lrc-nodes	My job has been pending for 6 hours with reason Resources. Can it start somewhere else?
+lrc-nodes	I think node n0123.etna0 makes my runs slow. How do I check?
+lrc-nodes	I need 8 nodes at once for a run, but etna only has 3 idle.
+lrc-lammps	module load lammps fails with "Failed to find the following module(s)".
+lrc-lammps	How many ns/day should I expect for a 6000-atom water box, and what --time should I ask for?
+lrc-lammps	My restarted LAMMPS run stops because no kspace style is defined.
+lrc-mdwatch	Wait for jobs 2671 and 2672 to finish and tell me how they went.
+lrc-mdwatch	mdwatch reported STALLED for my job. What now?
+comodino-campaigns	Start a new CoMoDInO campaign for NaCl at Au(111).
+comodino-chains	The CoMoDInO chain job for 01_prepare timed out and left a .chain.lock file.
+comodino-chains	The comodino --check-only run stops at authorization.json. What do I fix?
+comodino-metadynamics	Submit the shared-walker metadynamics suite for r01/04_metadynamics.
+none	Write a Python function that parses a CSV file.
+none	Fix the failing pytest in my Flask web app.

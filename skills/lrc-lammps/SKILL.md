@@ -1,26 +1,28 @@
 ---
 name: lrc-lammps
-description: Run LAMMPS molecular dynamics on the Lawrencium etna partitions with the nano group builds. Use when choosing a LAMMPS module or engine, writing LAMMPS inputs or launch lines, benchmarking ns/day or rank scaling, analyzing stage logs, or recording MD provenance. Use together with `lrc-cluster` for general sbatch and partition rules; for CoMoDInO campaigns use `comodino-campaigns`.
+description: Use when running LAMMPS on the Lawrencium etna partitions - choosing a nano group LAMMPS module, writing inputs or launch lines, benchmarking ns/day or rank scaling, sizing --time, reading LAMMPS logs, or recording MD provenance - or when `module load lammps` fails, `minimize` segfaults with fix shake, a restarted run lost its kspace style, or a job exits with code 13 after `lmp -help`. General sbatch rules are in `lrc-cluster`; CoMoDInO campaigns use `comodino-campaigns`.
+license: MIT
+compatibility: Requires a Lawrencium (LBL LRC) account in the nano group; SLURM, Lmod and bash.
 ---
 
-# LAMMPS MD on Lawrencium etna
+# LAMMPS on Lawrencium etna
 
-Conventions for LAMMPS calculations on the etna partitions with the nano group builds. Cluster-wide submission and environment rules are in `lrc-cluster`.
+## Modules
 
-## Engines
+| Module | Build |
+|---|---|
+| `lammps/20250722u6-gcc` | GCC, OpenMPI; the default, used by existing campaigns |
+| `lammps/20250722u6-avx2` | GCC, OpenMPI, full package set |
+| `lammps/20250722u6-intel25` | oneAPI 2025.2.1, Intel MPI, MKL FFT; about 6% faster at 24 ranks |
+| `lammps/20250722u6-gpu` | CUDA sm_50/70/75/80/86 (not es2 H100/H200) |
 
-- CPU engines, both valid for production (update6, `-march=x86-64-v3`):
-  - `lammps/20250722u6-intel25`: oneAPI 2025.2.1, Intel MPI, MKL FFT. About 6% faster than the GCC AVX2 build at 24 ranks; the old Intel NPT memory failure and iso box-symmetry bug are gone with this stack.
-  - `lammps/20250722u6-gcc` (plain group install, OpenMPI) or `lammps/20250722u6-avx2` (GCC, full package set). The existing campaign manifests use `-gcc`.
-- Keep one engine per campaign so runs stay comparable; the choice is recorded in the manifest.
-- GPU engine: `lammps/20250722u6-gpu` (CUDA, sm_50/70/75/80/86).
-- The module sets `LMP_ROOT` and `LMP_EXEC`; use `$LMP_EXEC` rather than guessing the path.
-- The pre-update3 modules `lammps/20250722-gcc`, `-gpu` and `-intel` segfault (gcc, gpu) or are untested (intel) on `minimize` when `fix shake` uses `output_every=0`; the upstream bug was fixed in stable_22Jul2025_update3. The `comodino-campaigns` engine validation refuses them. Do not use any of them, nor anything under `lammps/old/` (note that `lammps/old/20241119-gpu` is the Lmod default, so always load an explicit version).
-- `-intel25` and `-avx2` set `LMP_EXEC` through a symlink in the group software tree, so resolve with `readlink -f "$LMP_EXEC"` before hashing or recording the path.
+- Always load an explicit version: a bare `module load lammps` finds no default and fails. Never use `lammps/old/*` or the pre-update3 `lammps/20250722-gcc`, `-gpu`, `-intel`, which crash in `minimize` when `fix shake` uses `output_every=0`.
+- Keep one engine per campaign so runs stay comparable.
+- The module sets `LMP_EXEC`; use it. `-intel25` and `-avx2` point it through a symlink, so record the resolved path: `bash scripts/engine_info.sh MODULE` prints the module, resolved executable and sha256, and refuses the broken builds.
 
 ## Launch
 
-For a single run, start from `assets/etna_cpu.sbatch` in `lrc-cluster`. For a CoMoDInO bundle, see `comodino-campaigns`. OpenMPI builds (`-gcc`, `-avx2`):
+Start from `assets/etna_cpu.sbatch` in `lrc-cluster`. OpenMPI builds:
 
 ```bash
 module load lammps/20250722u6-gcc
@@ -28,29 +30,27 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 mpirun --bind-to core --map-by core -np $(( SLURM_CPUS_ON_NODE * SLURM_NNODES )) "$LMP_EXEC" -in input -screen none
 ```
 
-The `-intel25` build uses Intel MPI: pin through the environment instead (see "MPI binding" in `lrc-cluster`).
+`-intel25` uses Intel MPI: pin through the environment instead (`lrc-cluster`, "MPI binding").
 
-- Run on all cores of one node (24 on etna, 32 on etna_bigmem, 40 on etna_c40; see `lrc-cluster`). For systems of order 6000 atoms one node is the sweet spot (60% parallel efficiency at 24 ranks); 2 nodes are not worth it at that size. The 32- and 40-core nodes have not been benchmarked here yet: when a campaign first uses them, record ns/day at full node in its notes.
-- Performance reference for ~6k atoms with PPPM + SHAKE: about 8 ns/day at 24 ranks on etna (see [references/performance.md](references/performance.md)); an ~8.5k-atom interface walker ran ~11 ns/day at 24 ranks on etna and dirac1, ~12.5 at 24 ranks on etna_bigmem.
-- Size `--time` from measured throughput: a ~6k-atom chain of 5.52M steps at 0.5 fs runs in about 7.5 h at 204 steps/s on one 24-rank node, so 12 h fits with margin. Larger interface systems are slower; benchmark first. For multi-stage chains, support resume from the last completed stage's restart file (e.g. a `START_STAGE` variable checked against the stage list).
+## Sizing
+
+- ~6k atoms with PPPM + SHAKE at 0.5 fs: about 8 ns/day (204 steps/s) on one 24-rank etna node, 60% parallel efficiency. A second node is not worth it at that size, and OpenMP hybrids always lose. An ~8.5k-atom interface ran ~11 ns/day on etna and dirac1, ~12.5 on etna_bigmem. Scaling tables: [references/performance.md](references/performance.md).
+- The 32- and 40-core nodes are not benchmarked at full node yet: record ns/day the first time a campaign uses them.
+- Size `--time` from measured steps/s (`lammps_perf.sh`): 5.52M steps at 204 steps/s is about 7.5 h, so ask for 12 h. Multi-stage scripts should resume from the last completed stage's restart (e.g. a `START_STAGE` variable).
 
 ## Benchmarking
 
-- One sbatch per rank count (never sequential runs inside one allocation).
-- 10k-100k step runs; 1k steps is too noisy.
-- Parse `Loop time` and `Performance:` lines from the LAMMPS log for ns/day.
-- Save scripts, logs and a `BENCHMARK.md` summary in a numbered benchmark folder.
+One sbatch per rank count; 10k-100k steps (1k is noise). `bash scripts/lammps_perf.sh LOG...` prints ranks, steps, loop time, steps/s and ns/day per log. Keep scripts, logs and a `BENCHMARK.md` summary in a numbered folder.
 
-## LAMMPS input and log pitfalls
+## Pitfalls
 
-- LAMMPS restarts do NOT carry the kspace style. Generated stages restore electrostatics and groups after `read_restart`; any hand-written consumer must do the same before `run` or `minimize`.
-- Define computes/variables before `thermo_style`. For group COM velocity use the native equal-style `vcm(group,dim)` function (there is no `compute vcm`). Minimization and dynamics stages print different thermo columns; parse the header, never assume fixed columns. Step counters reset per stage: never concatenate logs or trajectories across stages.
-- In scripted sweeps use globs or `find`, never `$(ls ...)`: `ls` is often aliased to a colorized listing, and its escape codes become bogus path tokens.
-- `"$LMP_EXEC" -help | head` gets SIGPIPE and, under `set -o pipefail`, aborts the job with exit 13. Write `-help` to a file first, then read the file.
-- Aniso NPT with `fixedpoint 0 0 0` shows a stationary solid-minus-fluid temperature offset (about +15/-6 K) that vanishes in fixed-cell NVT stages; the uniform-background charge route prints the native PPPM net-charge warning. Both are expected.
+- Restarts do not carry the kspace style: after `read_restart`, redefine electrostatics and groups before `run` or `minimize`.
+- Define computes and variables before `thermo_style`. Group COM velocity is the equal-style `vcm(group,dim)` function; there is no `compute vcm`.
+- Minimization and dynamics print different thermo columns: parse the header. Step counters reset per stage: never concatenate logs or trajectories across stages.
+- In scripts use globs or `find`, never `$(ls ...)`: an aliased `ls` emits color codes that become bogus paths.
+- `"$LMP_EXEC" -help | head` gets SIGPIPE and, under `set -o pipefail`, kills the job with exit 13. Write `-help` to a file first.
 
 ## Provenance
 
-- Builder manifests and pilot artifacts are hash-tracked (`build.json`, `manifest.json`): never modify hashed pilot files; put changes in a new versioned run directory and document what changed, why and how it was checked.
-- Record the engine version, module, executable path and executable sha256 with every check or production run.
-- Changing a campaign's engine mid-stream needs executable validation (for CoMoDInO, its preflight) and a new run directory; never rewrite historical hashed manifests to point at another build.
+- Record the `engine_info.sh` line (module, resolved executable, sha256) with every check or production run.
+- Never modify hash-tracked files (`build.json`, `manifest.json`) or rewrite historical manifests: put changes in a new versioned run directory, noting what changed, why and how it was checked. Switching engine mid-campaign needs revalidation and a new run directory.

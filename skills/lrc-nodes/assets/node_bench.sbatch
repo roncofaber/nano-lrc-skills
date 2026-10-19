@@ -8,13 +8,12 @@
 #SBATCH --time=00:10:00
 #SBATCH --output=nodebench-%N-%j.out
 
-# Short compute benchmark of one node: a node can pass SLURM, scratch and SMT checks and still run MD much slower.
-# Submit one job per node, a suspect node and a known-good node of the same partition together (A/B):
-#   sbatch -p etna_bigmem -w n0214.etna0 node_bench.sbatch
-#   sbatch -p etna_bigmem -w n0200.etna0 node_bench.sbatch
-# Prints "NODEBENCH node partition ranks timesteps/s". A node more than about 25% below the good node of its pair is
-# degraded: add it to your excluded-nodes list. Reference rates (2026-10-06): etna 24 ranks ~10000 timesteps/s
-# (n0000), etna_bigmem 32 ranks ~12700 (n0200); n0214.etna0 gave 7526 and is excluded.
+# One-minute compute benchmark of one node: a node can pass SLURM, scratch and SMT checks and still run MD much slower.
+# Submit with scripts/node_bench.sh submit PARTITION SUSPECT GOOD, or by hand, one job per node (A/B):
+#   sbatch -p PART -w SUSPECT node_bench.sbatch
+#   sbatch -p PART -w GOOD node_bench.sbatch
+# Prints "NODEBENCH node partition ranks timesteps/s". A node more than about 25% below the good node is degraded.
+# Reference rates (2026-10): etna 24 ranks ~10000 timesteps/s, etna_bigmem 32 ranks ~12700.
 
 set -euo pipefail
 module load "${MODULE:-lammps/20250722u6-gcc}"

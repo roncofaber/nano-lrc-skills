@@ -1,6 +1,6 @@
 #!/bin/bash
 # Wait until N usable idle nodes are free in one partition, then print the partition and node list.
-#   node_window.sh -n N [-p PART[,PART...]] [-x EXCLUDE_FILE] [-q QUEUE_FILE] [-i SECONDS] [-t SECONDS] [-l LOGFILE]
+# usage: node_window.sh -n N [-p PART[,PART...]] [-x EXCLUDE_FILE] [-q QUEUE_FILE] [-i SECONDS] [-t SECONDS] [-l LOGFILE]
 # Defaults: -p etna,etna_bigmem,etna_c40 -i 300 -t 172800, readings to stderr (or -l LOGFILE). Counts only nodes in the exact "idle"
 # state ("idle*", "idle~" and the like are not usable), expands node lists before removing excluded nodes, and
 # writes one timestamped line per reading so a stopped watcher is visible in its log. When a window opens it prints
@@ -8,22 +8,33 @@
 # With -q, each window instead runs the first line of QUEUE_FILE with bash (WINDOW_PARTITION and WINDOW_NODES set),
 # removes it, logs "RUN cmd", its output and "EXIT rc cmd", and keeps watching until the queue is empty (exit 0).
 set -euo pipefail
+[[ ${1:-} == -h || ${1:-} == --help ]] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }
 need="" parts=etna,etna_bigmem,etna_c40 exclude_file="" queue="" interval=300 timeout=172800 log=/dev/stderr
 while getopts "n:p:x:q:i:t:l:" opt; do
     case $opt in
         n) need=$OPTARG ;; p) parts=$OPTARG ;; x) exclude_file=$OPTARG ;; q) queue=$OPTARG ;;
         i) interval=$OPTARG ;; t) timeout=$OPTARG ;; l) log=$OPTARG ;;
-        *) sed -n '2,9p' "$0" >&2; exit 2 ;;
+        *) sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0" >&2; exit 2 ;;
     esac
 done
-[[ $need =~ ^[1-9][0-9]*$ ]] || { sed -n '2,9p' "$0" >&2; exit 2; }
+[[ $need =~ ^[1-9][0-9]*$ ]] || { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0" >&2; exit 2; }
 
+lrc_cluster_script() {
+    local dir c
+    dir=$(dirname "$(readlink -f "$0")")
+    for c in "$dir/$1" "$dir/../../lrc-cluster/scripts/$1" "$dir/../../../skills/lrc-cluster/scripts/$1" \
+            "$HOME/.agents/skills/lrc-cluster/scripts/$1" "$HOME/.claude/skills/lrc-cluster/scripts/$1"; do
+        [[ -f $c ]] && { echo "$c"; return 0; }
+    done
+    echo "$1 (lrc-cluster skill) not found; install the shared skills" >&2
+    return 2
+}
+helper=$(lrc_cluster_script excluded_nodes.sh) || exit 2
+[[ -n $exclude_file ]] && export EXCLUDE_NODES_FILE=$exclude_file
 declare -A excluded=()
-if [[ -n $exclude_file ]]; then
-    while read -r node; do [[ -n $node ]] && excluded[$node]=1; done < <(tr -s ',\n ' '\n' < "$exclude_file")
-fi
+for node in $(bash "$helper" | tr ',' ' '); do excluded[$node]=1; done
 
-log_line() { if [[ $log == /dev/stderr ]]; then echo "$1" >&2; else echo "$(date +%FT%T) $1" >> "$log"; fi; }
+log_line() { echo "$(date +%FT%T) $1" >> "$log"; }
 
 start=$SECONDS
 while :; do
@@ -40,7 +51,7 @@ while :; do
         readings+=("$part=${#usable[@]}")
         if (( ${#usable[@]} >= need )); then
             nodes=$(IFS=,; echo "${usable[*]:0:$need}")
-            [[ $log == /dev/stderr ]] || echo "$(date +%FT%T) WINDOW $part $nodes" >> "$log"
+            [[ $log == /dev/stderr ]] || log_line "WINDOW $part $nodes"
             echo "WINDOW $part $nodes"
             [[ -n $queue ]] || exit 0
             command=$(head -n 1 "$queue")
@@ -57,9 +68,9 @@ while :; do
             break
         fi
     done
-    [[ -n $opened ]] || echo "$(date +%FT%T) need $need idle: ${readings[*]}" >> "$log"
+    [[ -n $opened ]] || log_line "need $need idle: ${readings[*]}"
     if (( SECONDS - start >= timeout )); then
-        echo "$(date +%FT%T) timeout after ${timeout}s" >> "$log"
+        log_line "timeout after ${timeout}s"
         exit 124
     fi
     sleep "$interval"

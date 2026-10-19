@@ -1,82 +1,52 @@
 ---
 name: comodino-campaigns
-description: Set up and run CoMoDInO molecular dynamics campaigns on the Lawrencium etna partitions: campaign intake and layout, engine validation, bundle generation, continuation policies, comodino.md.execution.chain jobs, review gates, acceptance and observation. Use for any CoMoDInO campaign work on LRC, together with `lrc-lammps` (engines, launch lines) and `lrc-cluster` (sbatch and partitions).
+description: Use when starting, setting up, validating, analysing or handing off a CoMoDInO molecular dynamics campaign on Lawrencium (`comodino campaign init`, `campaign check` failing, `decisions.md`, engine validation, RDF or CV analysis jobs), or when unsure which CoMoDInO step comes next. Running bundles is in `comodino-chains`, shared-walker metadynamics in `comodino-metadynamics`; LAMMPS engines in `lrc-lammps`, sbatch and partitions in `lrc-cluster`.
+license: MIT
+compatibility: Requires a Lawrencium (LBL LRC) account in the nano group and access to the private CoMoDInO package.
 ---
 
 # CoMoDInO campaigns on Lawrencium
 
-CoMoDInO (github.com/roncofaber/comodino, private: ask the maintainer for access; package and imports `comodino`) owns the recipes, generators, chain runner and campaign layout, and ships no site material. Its `docs/workflows/campaign_runbook.md` is the single ordered procedure from decisions to analysis, with exact commands and gates; follow it and do not re-derive the pipeline here. Its `skills/comodino/SKILL.md` covers the science. This skill supplies only what the runbook leaves to the site: modules, environment, launcher, resources, scheduler scripts. [references/comodino.md](references/comodino.md) maps runbook steps to Lawrencium specifics.
+CoMoDInO ([github.com/roncofaber/comodino](https://github.com/roncofaber/comodino), private: ask the maintainer for access) owns the recipes, generators, chain runner and campaign layout. Its `docs/workflows/campaign_runbook.md` is the ordered procedure from decisions to analysis, with commands and gates: follow it and do not re-derive the pipeline. Its `skills/comodino/SKILL.md` covers the science. These skills add only the Lawrencium side; [references/comodino.md](references/comodino.md) maps each runbook step to it.
 
-Below, `CHECKOUT` is your comodino clone and `ENV` your Python env with editable comodino and mdinterface installs (for example `$HOME/miniforge3/envs/mdinterface`). The job scripts read the env's `bin/` from `ENV_BIN`; conda envs have no `bin/activate`, so never source it.
+`CHECKOUT` is your comodino clone and `ENV` a Python 3.12 env with editable comodino and mdinterface installs (e.g. `$HOME/miniforge3/envs/mdinterface`). Job scripts take the env's `bin/` from `ENV_BIN`; conda envs have no `bin/activate`, so never source it.
 
-## Intake and defaults
+## Intake and decisions
 
-- Before creating anything, run the runbook's "Campaign intake": ask its questions, show its Defaults and the site defaults below for confirmation, and offer only the systems it lists as supported. Site questions to add: allocation (default `nano` on etna) and campaign location under scratch.
-- Decide only from the pinned CoMoDInO and mdinterface documentation and code, this skill, `lrc-cluster`, and what the user states when starting the campaign. Do not read other campaign folders, sibling agents' work or old handoffs to make decisions: they are not reviewed defaults. When the documentation is silent, ask the user or record an open question.
-- Defaults, used unless the user specifies otherwise at campaign start:
-  - Engine: `lammps/20250722u6-gcc`. Record it in `decisions.md` once and use that exact module everywhere in the campaign; do not validate or switch builds unless asked.
-  - LJ mixing rule: Lorentz-Berthelot (`md.mixing: "arithmetic"`) unless the user names a force field that requires another rule (`geometric`, `sixthpower`).
-  - Replicas, timestep, durations, interface geometry, numbering and every other scientific setting: the "Defaults" section of the runbook. `comodino campaign init` pre-fills them in `decisions.md`; cite that section as the review reference.
-  - Coordination-CV cutoffs and exponents are never defaults: bulk preparations run without CVs, each system's own production RDF gives them (runbook step 8), the user reviews them, and `comodino campaign observe` applies them in a `02_observe` bundle.
-  - Anything CoMoDInO leaves without a default is an open question for the user, never an agent choice.
-- The user's instructions at campaign start approve the choices they name. Record them verbatim in `decisions.md` with the date; everything else stays `pending` until the user reviews it.
+- Before creating anything, run the runbook's "Campaign intake": ask its questions, show its Defaults and the site defaults below for confirmation, and offer only the systems it lists as supported. Also ask for the allocation (default `nano` on etna) and the campaign location under scratch.
+- Site defaults: engine `lammps/20250722u6-gcc`, recorded once in `decisions.md` and used everywhere (do not validate or switch builds unless asked); LJ mixing Lorentz-Berthelot (`md.mixing: "arithmetic"`) unless the user's force field requires `geometric` or `sixthpower`. Every other scientific setting comes from the runbook "Defaults", which `comodino campaign init` pre-fills.
+- Coordination-CV cutoffs and exponents are never defaults: each system's production RDF gives them (runbook step 8), the user reviews them, and `comodino campaign observe` applies them.
+- Decide only from the pinned CoMoDInO and mdinterface docs and code, these skills and what the user states. Other campaign folders, other agents' work and old handoffs are not reviewed defaults. Anything still open is a question for the user, never an agent choice.
+- Record the user's starting instructions verbatim and dated in `decisions.md`; everything else stays `pending` until the user reviews it.
 
 ## Layout and tools
 
-- Start with `comodino campaign init CAMPAIGN`; `comodino campaign check CAMPAIGN` must pass before every handoff. Only `AGENTS.md`, `decisions.md` and the numbered folders may sit at the campaign root: put notes, findings and logs in `AGENTS.md` sections, or `campaign check` fails. Older campaigns keep their own layout; never move active runs.
-- Scheduler scripts and `slurm-*.out` logs live only in `CAMPAIGN/99_jobs/`; submit from there. Copy the skill's `submit_chain.sh`, `comodino_chain.sbatch`, `submit_suite.sh` and `suite_stage.sbatch` there as they are; they find the partition table in the installed `lrc-cluster` skill. Engine validation goes to `CAMPAIGN/00_validation/NN_<engine>/`.
+- `comodino campaign init CAMPAIGN` creates the campaign; `comodino campaign check CAMPAIGN` must pass before every handoff. Only `AGENTS.md`, `decisions.md` and numbered folders may sit at the root: notes, findings and logs go in `AGENTS.md` sections. Older campaigns keep their layout; never move active runs.
+- Scheduler scripts and `slurm-*.out` logs live in `CAMPAIGN/99_jobs/`; submit from there. Copy the submit scripts and job templates of `comodino-chains` and `comodino-metadynamics` (`scripts/*.sh`, `assets/*.sbatch`) into it unchanged.
 - Write each system's sources with `comodino campaign system CAMPAIGN/FAMILY/NN_name`, never by copying example files.
-- `comodino` has three installed subcommands: `resources`, `skill` and `campaign ACTION` (init, check, system, seeds, policy, authorize, accept, analysis, observe). Write every authorization with `comodino campaign authorize BUNDLE --engine LMP --reference "..."`, never by hand. Everything else is a `python -m comodino...` module; `python -m comodino.campaign` runs nothing.
+- The `comodino` command has `resources`, `skill` and `campaign ACTION` (init, check, system, seeds, policy, authorize, accept, analysis, observe); everything else is `python -m comodino...`.
 - Use absolute paths in every runner and generator command: the runbook's relative examples assume the campaign root as working directory.
+- Redo an acceptance, policy or authorization with `--supersede` (the old file becomes `NAME.superseded.N.json`). Never delete or rewrite records, stage results, reviews or launch records.
 
 ## Code pinning
 
-- The runner imports `comodino` at every stage, so pulling `CHECKOUT` while chains run breaks them. Pin the campaign: `git -C CHECKOUT worktree add CAMPAIGN/99_jobs/comodino COMMIT`, and pass it as `CODE=`; the job scripts put it first on `PYTHONPATH`. Record the CoMoDInO and mdinterface commits in `decisions.md`.
-- After pulling CoMoDInO, refresh the editable install (`ENV/bin/pip install --no-deps -e CHECKOUT`); otherwise the `comodino` console script keeps its old entry point and fails.
+- The runner imports `comodino` at every stage, so pulling `CHECKOUT` under a running chain breaks it. Pin the campaign with `git -C CHECKOUT worktree add CAMPAIGN/99_jobs/comodino COMMIT`; the job scripts put this `CODE` first on `PYTHONPATH`. Record the CoMoDInO and mdinterface commits in `decisions.md`.
+- After pulling CoMoDInO, refresh the editable install (`ENV/bin/pip install --no-deps -e CHECKOUT`), or the `comodino` console script fails on its old entry point.
 
 ## Engine validation
 
-Validate the engine first, before building anything (it needs no structures), once per campaign, with `sbatch` [assets/engine_validation.sbatch](assets/engine_validation.sbatch) (runbook step 5). It refuses the broken pre-update3 modules, records module, executable sha256, comodino commit, `lmp -h` and `pip freeze`, runs the native pytest checks under `00_validation/`, fails if any test skipped, and optionally runs the bulk smoke check. The native tests take about a minute; a short pass is expected as long as none skipped.
+Validate first (runbook step 5, needs no structures), once per campaign, from `99_jobs`:
 
-## Chains
+```bash
+sbatch --export=ALL,CAMPAIGN=/abs/campaign,MODULE=lammps/20250722u6-gcc,CODE=/abs/checkout engine_validation.sbatch
+```
 
-- Run each preparation or sampling bundle as one sbatch through `python -m comodino.md.execution.chain`, never as an agent resubmitting one stage per job, and never with a bespoke chain loop or review script; extend the continuation policy instead.
-- Every job uses all cores of its node: [assets/comodino_chain.sbatch](assets/comodino_chain.sbatch) and [assets/suite_stage.sbatch](assets/suite_stage.sbatch) write their launcher (`RECORDS/launcher.JOBID.json`) from the allocation, so never write a fixed `-np`. For `--check-only` on the login node use any launcher with the intended form, e.g. `["mpirun", "--bind-to", "core", "--map-by", "core", "-np", "24", "{engine}"]`. The runners print `IDLE CORES` and record `cores` in each launch record if ranks fall short of the allocation; treat that as an error to fix. A stage may continue on another partition: comodino records the rank-count change instead of failing it.
-- Records, `authorization.json` and `continuation.json` for bundle `FAMILY/NN_system/rNN/NN_name` live in `FAMILY/NN_system/rNN/records/NN_name/`.
-- Continuation policies: `comodino campaign policy BUNDLE` writes the pending default into the records folder. Show it to the user and approve it only on their decision. Minimization must accept both `energy tolerance` and `force tolerance`.
-- Before submitting, run the runner command with `--check-only` on the login node. It stops at the first failing gate and names the file and field; fix and rerun until it reports `ready_for_preparation_chain`.
-- Submit with `bash` [assets/submit_chain.sh](assets/submit_chain.sh) `BUNDLE [START_STAGE [PARTITION]]` from `99_jobs`, with `EXCLUDE_NODES_FILE` set if you keep one; pick the partition that has idle nodes now (`lrc-cluster`, "Where can a job start"), as every partition is used fully. It runs [assets/comodino_chain.sbatch](assets/comodino_chain.sbatch) with a short job name (`<campaign NN><b|i>-<system>-<bundle>`, e.g. `06i-brpt111-p01`), RECORDS, CODE and `--comment=mdwatch:stall=30,watch=$BUNDLE`, so `lrc-mdwatch` watches the bundle where LAMMPS writes.
-- A passed continuation review is not physical acceptance; chain completion reports `physical_acceptance="inconclusive"` until the separate scientific review.
-
-## Resume and recovery
-
-- Resume by resubmitting with `START_STAGE` set to the first unstarted stage. A stage that was running when the job died cannot be resumed in place: recovery needs a supported procedure or a regenerated bundle (a new numbered sibling, e.g. `03_prepare_dt05fs`).
-- A killed job (TIMEOUT, NODE_FAIL, scancel) leaves `<bundle>/.chain.lock`. Confirm the job is gone (`squeue`, or `mdwatch show JOBID`) before deleting it.
-- Never hand-edit or `sed` generated inputs. Any changed setting means a copied protocol JSON and a new bundle.
-
-## Walker starts for interface metadynamics
-
-- Prepare a suite's distinct walker starts with `python -m comodino.md.sampling.branches generate` from the accepted interface preparation (CoMoDInO `docs/workflows/walker_starts.md`); it writes `rNN/NN_walker_starts/wNN`, records in `rNN/records/NN_walker_starts/wNN/`. Count, duration (default 200 ps) and whether branches start from evenly spaced frames of the accepted production (`"frames": "spaced"`) or from its final state are the user's decision.
-- Give each branch `comodino campaign policy`, an authorization and `--check-only`, then submit each as its own single-node job: `bash submit_chain.sh rNN/NN_walker_starts/wNN nvt_sample [PARTITION]` (job name `<NN>i-<system>-wNN`). Run them concurrently on as many nodes as are free; they are independent until the suite.
-- After the branches finish: interface analysis per branch, `comodino campaign accept` per branch, then `branches spread` once for the set. The suite itself needs a common start for all walkers, unlike the branches.
-
-## Shared-walker metadynamics suites
-
-Follow these steps in order; do not write your own launcher, review script or stage loop. Background: CoMoDInO `docs/workflows/metadynamics_suite.md`, section "Current recipe".
-
-1. Protocol: suite protocol schema 2 with CV plan schema 3 in `sources/rNN_NN_metadynamics.json`. Every numerical choice (CVs, grids, `hill_width` in grid points, hill weight, deposition, walls, sharing interval, `restart_every_steps`, duration, walker count) comes from the user's recorded decision; the generator refuses a hill width outside 1-3, a wall within 6 sigma of a soft grid edge and checkpoints not aligned with deposition and sharing.
-2. Generate with `python -m comodino.md.sampling.metadynamics generate` into `rNN/NN_metadynamics` (absolute registry path, folder not yet existing).
-3. For each walker: `comodino campaign policy rNN/NN_metadynamics/wNN` (show the default to the user and approve it on their decision, or under an approval they delegated at campaign start; when walker sources ran on another rank count, the restart rank-count warning needs the user's decision to be allowed), and `comodino campaign authorize rNN/NN_metadynamics/wNN --engine LMP --reference "..."` (writes `rNN/records/NN_metadynamics/authorizations/wNN.json`).
-4. Check with `python -m comodino.md.sampling.metadynamics run ... --stage wall_ramp --check-only` on the login node, then submit all stages as one job: `bash` [assets/submit_suite.sh](assets/submit_suite.sh) `rNN/NN_metadynamics wall_ramp,wall_relax,metadynamics [etna|etna_bigmem|etna_c40|dirac1]` from `99_jobs`, with `EXCLUDE_NODES_FILE` set to your excluded-nodes list. [assets/suite_stage.sbatch](assets/suite_stage.sbatch) takes as many nodes as walkers at the partition's core count (24, 32, 40, 24), runs the stages in order in that allocation with all walkers starting together, reviews every walker after each stage, and stops at the first stage whose reviews do not all pass, so no agent has to be awake between stages. A single stage (e.g. to rerun one on another partition) is `submit_suite.sh SUITE STAGE`.
-5. When no partition has enough free nodes, do not wait in the agent: put the submit line in the queue of a detached `node_window.sh -q` from `lrc-cluster`, e.g. `echo 'cd CAMPAIGN/99_jobs && bash submit_suite.sh SUITE wall_ramp,wall_relax,metadynamics $WINDOW_PARTITION' >> QUEUE`, with `-n` the walker count, `-p` the partitions the user allowed and `-x "$EXCLUDE_NODES_FILE"`; start it with `EXCLUDE_NODES_FILE` exported, since queued commands inherit its environment. One watcher serves all waiting suites in order. Then wait for the job with a background `mdwatch wait JOBID --timeout 216000` (60 h for 20 ns, `lrc-mdwatch`). On exit 1, read which stage failed in the job's output and the `RECORDS/wNN/STAGE.review.json` decisions and report them; never resubmit a failed stage blindly. When setting up several systems, list every system's suite and records before submitting anything: a setup loop that died part-way leaves later systems missing.
-6. A metadynamics job that ends normally needs no restart. If it fails, do not resubmit: record the failure, confirm the job is gone, and recover from the latest checkpoint all walkers share with `python -m comodino.md.sampling.recovery generate` and `recovery run` (as one job like step 4). If recovery refuses, stop and ask the user.
+[assets/engine_validation.sbatch](assets/engine_validation.sbatch) refuses the broken pre-update3 modules, records module, executable sha256, comodino commit, `lmp -h` and `pip freeze` in `00_validation/NN_<engine>/`, and fails if any native test was skipped. The tests take about a minute.
 
 ## Analysis
 
-- Redoing an acceptance, policy or authorization (`comodino campaign accept|policy|authorize ... --supersede`) keeps the old file as `NAME.superseded.N.json`; never delete records by hand. Stage results, reviews and launch records are evidence and are never rewritten.
-- Run trajectory analysis (`comodino campaign analysis`, `python -m comodino.md.analysis.cv_proposal`, RDFs) as a short etna sbatch job from `99_jobs`, never on the login node or in the agent's shell: it pins the shared node and hangs every other session on it. Read the resulting `report.json` and CSV files afterwards.
-- With a text-only model, read `report.json` and CSV files instead of opening `.png` or `.pdf` plots.
+Run anything that reads trajectories (`comodino campaign analysis`, `python -m comodino.md.analysis.cv_proposal`, RDFs) as a short etna sbatch job from `99_jobs`, never on the login node or in the agent's shell: it saturates the shared node and hangs every session on it. Then read `report.json` and the CSV files rather than `.png` or `.pdf` plots.
 
-## Agent phasing
+## Phasing
 
-Split long campaigns into phases, one agent each, handing off through the campaign `AGENTS.md`: setup (init, sources, engine validation, builds, bundles, policies, chain submission); after the chains finish, acceptance (step 7); then observation (step 8). One agent driving a whole campaign runs out of context and stops without reporting.
+Give each phase its own agent, handing off through `AGENTS.md`: setup (init, sources, validation, builds, bundles, policies, submission), then acceptance after the chains finish (runbook step 7), then observation (step 8). One agent driving a whole campaign runs out of context and stops without reporting.

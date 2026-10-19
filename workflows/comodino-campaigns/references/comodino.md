@@ -8,13 +8,14 @@ CoMoDInO's `docs/workflows/campaign_runbook.md` (in your checkout, or exported w
 | 0. Environment | Use a Python 3.12 env with editable comodino and mdinterface (`main`); PACKMOL is in the env `bin/`. Pin the campaign's comodino commit as a worktree in `99_jobs/comodino` and pass it as `CODE=` to the job scripts. Record both commits in `decisions.md`; `engine_validation.sbatch` writes `pip freeze` to `00_validation/NN_<engine>/pip_freeze.txt`, which `decisions.md` cites. |
 | 3-4. Build and generate | Login node is fine; generators run no MD. |
 | 5. Validate the engine | Do this first, right after step 0. `assets/engine_validation.sbatch` from `99_jobs/`, once for the campaign's engine; writes `00_validation/NN_<module>/`. Required LAMMPS packages (KSPACE, MOLECULE, RIGID, COLVARS) are all in `lammps/20250722u6-gcc`. |
-| 6. Authorize and run | Records, `authorization.json`, `continuation.json` in `FAMILY/NN_system/rNN/records/NN_name/`. One `99_jobs/launcher.json` per campaign. `assets/comodino_chain.sbatch` from `99_jobs/`, one job per bundle, `--check-only` first on the login node with absolute paths. Engine sha256 in `authorization.json` must be of `readlink -f "$LMP_EXEC"`. |
+| 6. Authorize and run | Records, `authorization.json`, `continuation.json` in `FAMILY/NN_system/rNN/records/NN_name/`. One `99_jobs/launcher.json` per campaign. `comodino_chain.sbatch` (`comodino-chains`) from `99_jobs/`, one job per bundle, `--check-only` first on the login node with absolute paths. Engine sha256 in `authorization.json` must be of `readlink -f "$LMP_EXEC"`. |
 | 7-9. Accept, sample, assess | Anything that reads trajectories (`comodino campaign analysis`, `comodino.md.analysis.cv_proposal`, RDFs, coordination numbers) runs as a short etna sbatch job from `99_jobs/`, never on the login node: it saturates the shared node and hangs every other session there. The login node only reads the resulting `report.json` and CSV files. Sampling bundles run through the same chain template. |
 
 ## Adapter notes
 
 - Isolated charged ions use `prepare_pilot.py build-reference`; chloride at an interface uses `examples/md_workflow/interface_cl_au111.json` (review ships pending).
 - Interface PPPM accuracy comes from the structure manifest, not the dynamics protocol.
+- Aniso NPT with `fixedpoint 0 0 0` shows a stationary solid-minus-fluid temperature offset (about +15/-6 K) that vanishes in fixed-cell NVT stages; the uniform-background charge route prints the native PPPM net-charge warning. Both are expected.
 
 ## Building with mdinterface
 

@@ -1,5 +1,6 @@
 #!/bin/bash
 set -u
+export EXCLUDE_NODES_FILE=
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -11,7 +12,7 @@ check() {
 }
 
 skill() {
-    local dir="$1/$2" name="${3:-$(basename "$2")}" desc="${4:-Use for tests.}"
+    local dir="$1/$2" name="${3:-$(basename "$2")}" desc="${4:-Use when testing.}"
     mkdir -p "$dir"
     printf -- '---\nname: %s\ndescription: %s\n---\n\n# Test\n' "$name" "$desc" > "$dir/SKILL.md"
 }
@@ -34,9 +35,18 @@ skill "$root" skills/lrc-block lrc-block ">"
 "$repo/check.sh" "$root" | grep -q "skills/lrc-block: description must be a single line"; check "block scalar rejected" "$?" "0"
 rm -rf "$root/skills/lrc-block"
 
-skill "$root" skills/lrc-long lrc-long "$(printf 'x%.0s' {1..1025})"
+skill "$root" skills/lrc-long lrc-long "Use when $(printf 'x%.0s' {1..1025})"
 "$repo/check.sh" "$root" | grep -q "skills/lrc-long: description over 1024 characters"; check "long description rejected" "$?" "0"
 rm -rf "$root/skills/lrc-long"
+
+skill "$root" skills/lrc-what lrc-what "Runs things."
+"$repo/check.sh" "$root" | grep -q 'skills/lrc-what: description must start with "Use when"'; check "description without trigger rejected" "$?" "0"
+rm -rf "$root/skills/lrc-what"
+
+skill "$root" skills/lrc-big
+printf 'word %.0s' {1..701} >> "$root/skills/lrc-big/SKILL.md"
+"$repo/check.sh" "$root" | grep -q "skills/lrc-big: SKILL.md body has"; check "oversized body rejected" "$?" "0"
+rm -rf "$root/skills/lrc-big"
 
 skill "$root" workflows/lrc-good
 "$repo/check.sh" "$root" | grep -q "name also used by"; check "duplicate name rejected" "$?" "0"
@@ -62,8 +72,21 @@ printf '#!/bin/bash\nif true; then\n' > "$root/skills/lrc-good/assets/broken.sba
 "$repo/check.sh" "$root" | grep -q "shell syntax error in assets/broken.sbatch"; check "broken asset script rejected" "$?" "0"
 rm "$root/skills/lrc-good/assets/broken.sbatch"
 
+printf '#!/bin/bash\necho hi\n' > "$root/skills/lrc-good/assets/tool.sh"
+"$repo/check.sh" "$root" | grep -q "assets/tool.sh: shell scripts go in scripts/"; check "script outside scripts/ rejected" "$?" "0"
+rm "$root/skills/lrc-good/assets/tool.sh"
+mkdir -p "$root/skills/lrc-good/scripts"
+printf '#!/bin/bash\n# Does a thing.\necho hi\n' > "$root/skills/lrc-good/scripts/tool.sh"
+out="$("$repo/check.sh" "$root")"
+grep -q "scripts/tool.sh: no '# usage:' header line" <<< "$out"; check "script without usage rejected" "$?" "0"
+grep -q "scripts/tool.sh: -h does not print the usage" <<< "$out"; check "script without -h rejected" "$?" "0"
+grep -q "scripts/tool.sh is not mentioned in SKILL.md" <<< "$out"; check "unlisted script rejected" "$?" "0"
+cp "$repo/skills/lrc-cluster/scripts/partitions.sh" "$root/skills/lrc-good/scripts/tool.sh"
+echo 'Run `bash scripts/tool.sh`.' >> "$root/skills/lrc-good/SKILL.md"
+"$repo/check.sh" "$root" >/dev/null; check "conforming script passes" "$?" "0"
+
 # submit_chain.sh
-sub="$repo/workflows/comodino-campaigns/assets/submit_chain.sh"
+sub="$repo/workflows/comodino-chains/scripts/submit_chain.sh"
 fake="$tmp/fakebin" camp="$tmp/scratch/06_kbr_pt111_f"
 mkdir -p "$fake" "$camp/03_interface/03_br_pt111/r01/01_prepare" "$camp/03_interface/03_br_pt111/r02/03_walker_starts/w07" \
     "$camp/02_bulk/09_kbr_40pairs/r01/02_observe" "$camp/03_interface/03_br_pt111/r01/01_prepare/w01"
@@ -82,7 +105,7 @@ grep -q -- "--comment=mdwatch:stall=30,watch=$camp/03_interface/03_br_pt111/r02/
 submit "$camp/03_interface/03_br_pt111/r01/01_prepare/w01" >/dev/null 2>&1; check "branch of a non-walker bundle rejected" "$?" "2"
 
 # submit_suite.sh
-suite_sub="$repo/workflows/comodino-campaigns/assets/submit_suite.sh"
+suite_sub="$repo/workflows/comodino-metadynamics/scripts/submit_suite.sh"
 suite="$camp/03_interface/03_br_pt111/r01/04_metadynamics"
 mkdir -p "$suite"
 printf '{"schema_version": 2, "walkers": ["w01", "w02", "w03"], "launch": "lammps_partition"}' > "$suite/suite.json"
@@ -107,14 +130,14 @@ out="$(ssubmit "$suite" wall_ramp,wall_relax,metadynamics etna_bigmem)"
 grep -q "STAGE=wall_ramp,wall_relax,metadynamics," <<< "$out"; check "stage list passed to one job" "$?" "0"
 grep -qx -- "--job-name=06i-brpt111-wwm" <<< "$out"; check "stage list job name" "$?" "0"
 ssubmit "$suite" wall_ramp,production >/dev/null 2>&1; check "unknown stage in list rejected" "$?" "2"
-grep -q 'for stage in ${STAGE//,/ }' "$repo/workflows/comodino-campaigns/assets/suite_stage.sbatch"; check "suite job runs the stage list in order" "$?" "0"
+grep -q 'for stage in ${STAGE//,/ }' "$repo/workflows/comodino-metadynamics/assets/suite_stage.sbatch"; check "suite job runs the stage list in order" "$?" "0"
 ssubmit "$suite" production >/dev/null 2>&1; check "unknown suite stage rejected" "$?" "2"
 ssubmit "$suite" metadynamics lr6 >/dev/null 2>&1; check "unsupported partition rejected" "$?" "2"
 printf '{"schema_version": 1, "walkers": ["w01"]}' > "$suite/suite.json"
 ssubmit "$suite" metadynamics >/dev/null 2>&1; check "schema 1 suite rejected" "$?" "1"
 
 # node_window.sh
-window="$repo/skills/lrc-cluster/assets/node_window.sh"
+window="$repo/skills/lrc-nodes/scripts/node_window.sh"
 cat > "$fake/sinfo" <<'SH'
 #!/bin/bash
 for a in "$@"; do [[ $prev == -p ]] && part=$a; prev=$a; done
@@ -147,7 +170,7 @@ nwin -n 2 -p big -q "$tmp/queue" -l "$tmp/q.log" -i 0 -t 5 >/dev/null
 grep -q "EXIT 1 false" "$tmp/q.log"; check "failed queue command logged" "$?" "0"
 
 # partitions.sh
-part="$repo/skills/lrc-cluster/assets/partitions.sh"
+part="$repo/skills/lrc-cluster/scripts/partitions.sh"
 check "etna cores" "$(bash "$part" etna)" "etna nano 24"
 check "bigmem cores" "$(bash "$part" etna_bigmem)" "etna_bigmem nano 32"
 check "c40 cores" "$(bash "$part" etna_c40)" "etna_c40 nano 40"
@@ -155,7 +178,7 @@ check "dirac1 account" "$(bash "$part" dirac1)" "dirac1 dirac1 24"
 bash "$part" lr6 >/dev/null 2>&1; check "unknown partition rejected" "$?" "2"
 
 # templates take ranks from the allocation
-for f in skills/lrc-cluster/assets/etna_cpu.sbatch workflows/comodino-campaigns/assets/comodino_chain.sbatch; do
+for f in skills/lrc-cluster/assets/etna_cpu.sbatch workflows/comodino-chains/assets/comodino_chain.sbatch; do
     grep -qE '^#SBATCH --ntasks=' "$repo/$f"; check "$f has no fixed --ntasks" "$?" "1"
     grep -q 'SLURM_CPUS_ON_NODE' "$repo/$f"; check "$f derives ranks from the allocation" "$?" "0"
 done
@@ -202,6 +225,70 @@ check "moved skill relinked" "$(readlink "$home/.claude/skills/lrc-one")" "$src/
 rm -rf "$src/workflows/flow-two"
 HOME="$home" "$src/install.sh" >/dev/null
 check "deleted skill link removed" "$(test -L "$home/.agents/skills/flow-two"; echo $?)" "1"
+
+HOME="$home" "$src/install.sh" --bogus >/dev/null 2>&1; check "unknown option rejected" "$?" "2"
+check "unknown option installs nothing" "$(ls "$home/.claude/skills" | sort | tr '\n' ' ')" "lrc-mine lrc-one "
+HOME="$home" "$src/install.sh" --uninstall >/dev/null; check "uninstall succeeds" "$?" "0"
+check "uninstall removes own links" "$(test -L "$home/.claude/skills/lrc-one"; echo $?)" "1"
+check "uninstall keeps own directory" "$(test -d "$home/.claude/skills/lrc-mine"; echo $?)" "0"
+check "uninstall keeps foreign link" "$(readlink "$home/.agents/skills/lrc-mine")" "/elsewhere"
+
+# excluded_nodes.sh
+ex="$repo/skills/lrc-cluster/scripts/excluded_nodes.sh"
+printf '# bad nodes, who and why\nn0001.etna0, n0068.etna0  # failed 2026-10-01\n\nn0214.etna0\n' > "$tmp/excl_comments"
+check "excluded list drops comments and blanks" "$(EXCLUDE_NODES_FILE="$tmp/excl_comments" bash "$ex")" "n0001.etna0,n0068.etna0,n0214.etna0"
+check "empty EXCLUDE_NODES_FILE excludes nothing" "$(EXCLUDE_NODES_FILE= bash "$ex")" ""
+EXCLUDE_NODES_FILE="$tmp/nope" bash "$ex" >/dev/null 2>&1; check "unreadable excluded list rejected" "$?" "2"
+
+# xbatch.sh
+xb="$repo/skills/lrc-cluster/scripts/xbatch.sh"
+out="$(PATH="$fake:$PATH" EXCLUDE_NODES_FILE="$tmp/excluded.dat" bash "$xb" -p etna job.sbatch)"
+check "xbatch adds the exclude list first" "$out" "$(printf -- '--exclude=n0001.etna0,n0068.etna0,n0214.etna0\n-p\netna\njob.sbatch')"
+check "xbatch without a list is plain sbatch" "$(PATH="$fake:$PATH" bash "$xb" job.sbatch)" "job.sbatch"
+PATH="$fake:$PATH" EXCLUDE_NODES_FILE="$tmp/nope" bash "$xb" job.sbatch >/dev/null 2>&1; check "xbatch unreadable list rejected" "$?" "2"
+
+# free_nodes.sh
+cat > "$fake/sinfo" <<'SH'
+#!/bin/bash
+for a in "$@"; do [[ ${prev:-} == -p ]] && part=$a; prev=$a; done
+case $part in
+    etna) printf 'n1 idle (null) gpu:0\nn2 idle (null) gpu:0\nn3 idle* (null) gpu:0\nn4 alloc (null) gpu:0\nn5 drain (null) gpu:0\n' ;;
+    etna_gpu) printf 'g1 idle gpu:V100:2 gpu:V100:0(IDX:N/A)\ng2 mix gpu:V100:2 gpu:V100:1(IDX:0)\ng3 drain* gpu:K80:4 gpu:K80:0(IDX:N/A)\n' ;;
+esac
+SH
+printf '#!/bin/bash\n[[ "$*" == *etna_gpu* ]] || printf "1\\n2\\n"\n' > "$fake/squeue"
+chmod +x "$fake/sinfo" "$fake/squeue"
+fn="$repo/skills/lrc-nodes/scripts/free_nodes.sh"
+check "free_nodes counts exact idle" "$(PATH="$fake:$PATH" bash "$fn" etna)" "etna idle=2 alloc=1 mixed=0 unavailable=2 total=5 pending_jobs=2"
+printf 'n2\n' > "$tmp/excl1"
+check "free_nodes drops excluded nodes" "$(PATH="$fake:$PATH" EXCLUDE_NODES_FILE="$tmp/excl1" bash "$fn" etna)" "etna idle=1 alloc=1 mixed=0 unavailable=3 total=5 pending_jobs=2"
+check "free_nodes free GPUs" "$(PATH="$fake:$PATH" bash "$fn" etna_gpu)" "etna_gpu idle=1 alloc=0 mixed=1 unavailable=1 total=3 pending_jobs=0 free_gpus=V100:3"
+
+# node_bench.sh report
+nb="$tmp/nb" && mkdir -p "$nb"
+echo "NODEBENCH n0000.etna0 etna 24 10000.0" > "$nb/nodebench-a.out"
+echo "NODEBENCH n0214.etna0 etna 24 7000.0" > "$nb/nodebench-b.out"
+echo "NODEBENCH n0200.etna0 etna_bigmem 32 12700.0" > "$nb/nodebench-c.out"
+check "node_bench report flags degraded node" "$(bash "$repo/skills/lrc-nodes/scripts/node_bench.sh" report "$nb")" "$(printf 'n0214.etna0 etna 24 7000.0 70 DEGRADED\nn0000.etna0 etna 24 10000.0 100\nn0200.etna0 etna_bigmem 32 12700.0 100')"
+bash "$repo/skills/lrc-nodes/scripts/node_bench.sh" submit etna >/dev/null 2>&1; check "node_bench submit needs two nodes" "$?" "2"
+
+# lammps_perf.sh
+cat > "$tmp/log.lammps" <<'LOG'
+Loop time of 48.9 on 24 procs for 10000 steps with 6074 atoms
+Performance: 8.835 ns/day, 2.716 hours/ns, 204.499 timesteps/s, 1.242 Matom-step/s
+LOG
+check "lammps_perf parses a log" "$(bash "$repo/skills/lrc-lammps/scripts/lammps_perf.sh" "$tmp/log.lammps")" "$tmp/log.lammps 24 10000 48.9 204.499 8.835"
+echo "no run" > "$tmp/empty.log"
+bash "$repo/skills/lrc-lammps/scripts/lammps_perf.sh" "$tmp/empty.log" >/dev/null 2>&1; check "lammps_perf reports logs without a run" "$?" "1"
+
+# install.sh --personal
+phome="$tmp/phome" && mkdir -p "$phome"
+HOME="$phome" USER=jdoe "$repo/install.sh" --personal >/dev/null
+check "personal skill named after the user" "$(sed -n 2p "$phome/.agents/skills/jdoe-lrc/SKILL.md")" "name: jdoe-lrc"
+check "personal skill linked for Claude Code" "$(readlink "$phome/.claude/skills/jdoe-lrc")" "$phome/.agents/skills/jdoe-lrc"
+echo edited >> "$phome/.agents/skills/jdoe-lrc/SKILL.md"
+HOME="$phome" USER=jdoe "$repo/install.sh" --personal >/dev/null
+check "personal skill never overwritten" "$(tail -n1 "$phome/.agents/skills/jdoe-lrc/SKILL.md")" "edited"
 
 echo "$((total - failures))/$total passed"
 exit $((failures > 0))

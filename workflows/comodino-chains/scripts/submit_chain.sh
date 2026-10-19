@@ -1,9 +1,9 @@
 #!/bin/bash
 # Submit one comodino chain job with a short job name derived from the bundle path.
 # Run from CAMPAIGN/99_jobs:
-#   submit_chain.sh BUNDLE [START_STAGE [PARTITION]] [extra sbatch options...]
+# usage: submit_chain.sh BUNDLE [START_STAGE [PARTITION]] [extra sbatch options...]
 # PARTITION is etna (default), etna_bigmem, etna_c40 or dirac1; the job takes every core of its node (partition
-# table: lrc-cluster assets/partitions.sh). Nodes in $EXCLUDE_NODES_FILE are excluded.
+# table: lrc-cluster scripts/partitions.sh). Excluded nodes come from lrc-cluster excluded_nodes.sh.
 # BUNDLE is CAMPAIGN/FAMILY/NN_system/rNN/NN_bundle, or a walker-start branch
 # CAMPAIGN/FAMILY/NN_system/rNN/NN_walker_starts/wNN. The job name is
 #   <campaign NN><family b|i>-<system>-<bundle initial><bundle NN | wNN>[r<replica>]
@@ -12,23 +12,29 @@
 # for branch w07, with the replica suffix only when it is not r01. RECORDS, CODE (99_jobs/comodino) and the mdwatch
 # comment follow from BUNDLE. Each branch is its own single-node job.
 set -euo pipefail
+[[ ${1:-} == -h || ${1:-} == --help ]] && { sed -n '2,/^[^#]/s/^# \{0,1\}//p' "$0"; exit 0; }
 BUNDLE=$(readlink -f "${1:?usage: submit_chain.sh BUNDLE [START_STAGE] [sbatch options]}")
 START_STAGE=${2:-minimize}
 PARTITION=${3:-etna}
 shift $(( $# >= 3 ? 3 : $# ))
 here=$(dirname "$(readlink -f "$0")")
-partitions=""
-for candidate in "$here/../../../skills/lrc-cluster/assets/partitions.sh" "$here/partitions.sh" \
-        "$HOME/.agents/skills/lrc-cluster/assets/partitions.sh" "$HOME/.claude/skills/lrc-cluster/assets/partitions.sh"; do
-    [[ -f $candidate ]] && { partitions=$candidate; break; }
-done
-[[ -n $partitions ]] || { echo "partitions.sh (lrc-cluster skill) not found; install the shared skills" >&2; exit 2; }
+template=$here/comodino_chain.sbatch
+[[ -f $template ]] || template=$here/../assets/comodino_chain.sbatch
+lrc_cluster_script() {
+    local dir c
+    dir=$(dirname "$(readlink -f "$0")")
+    for c in "$dir/$1" "$dir/../../lrc-cluster/scripts/$1" "$dir/../../../skills/lrc-cluster/scripts/$1" \
+            "$HOME/.agents/skills/lrc-cluster/scripts/$1" "$HOME/.claude/skills/lrc-cluster/scripts/$1"; do
+        [[ -f $c ]] && { echo "$c"; return 0; }
+    done
+    echo "$1 (lrc-cluster skill) not found; install the shared skills" >&2
+    return 2
+}
+partitions=$(lrc_cluster_script partitions.sh) || exit 2
 read -r _ account cores < <(bash "$partitions" "$PARTITION") || exit 2
+nodes=$(bash "$(lrc_cluster_script excluded_nodes.sh)") || exit 2
 exclude=()
-if [[ -n "${EXCLUDE_NODES_FILE:-}" ]]; then
-    nodes=$(tr -s ',\n ' ',' < "$EXCLUDE_NODES_FILE" | sed 's/^,*//; s/,*$//')
-    [[ -n "$nodes" ]] && exclude=(--exclude="$nodes")
-fi
+[[ -n "$nodes" ]] && exclude=(--exclude="$nodes")
 
 branch=""
 if [[ $(basename "$BUNDLE") =~ ^w[0-9]{2}$ && $(basename "$(dirname "$BUNDLE")") == *_walker_starts ]]; then
@@ -61,4 +67,4 @@ CODE="$campaign_dir/99_jobs/comodino"
 exec sbatch --job-name="$name" --partition="$PARTITION" --account="$account" --ntasks-per-node="$cores" \
     ${exclude[@]+"${exclude[@]}"} --comment="mdwatch:stall=30,watch=$BUNDLE" \
     --export="ALL,BUNDLE=$BUNDLE,RECORDS=$RECORDS,START_STAGE=$START_STAGE,CODE=$CODE" \
-    "$@" "$here/comodino_chain.sbatch"
+    "$@" "$template"

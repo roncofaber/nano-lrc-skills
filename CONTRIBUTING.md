@@ -1,8 +1,14 @@
 # Contributing a skill
 
-1. Branch, add `skills/lrc-<software>/` (or `workflows/<workflow>/`) with a `SKILL.md`, open a pull request. CI runs `tests/run.sh` and `check.sh`; both must pass.
-2. Frontmatter: `name` equal to the folder name (lowercase letters, digits, single hyphens, at most 64 characters) and a one-line `description` of at most 1024 characters that says when to use the skill and, if it overlaps another skill, when to prefer that one.
-3. Keep `SKILL.md` short. Put detail that only some tasks need in `references/`, templates and job scripts in `assets/`, and link them with relative links.
-4. Write for any nano member: no personal home paths (`/global/home/users/<name>`), personal checkouts, accounts other than `nano`, or credentials. Use `$HOME`, `$USER` and placeholders such as `CHECKOUT`. Personal conventions belong in your own dotfiles or a private skill.
-5. One software or one workflow per skill. Write prose as unwrapped markdown, one line per paragraph or list item.
-6. Run `./check.sh` locally before pushing.
+1. Branch, add `skills/lrc-<topic>/` (or `workflows/<workflow>/`) with a `SKILL.md`, open a pull request. CI runs `tests/run.sh` and `check.sh`; both must pass. Run them locally first (`pip install skills-ref` enables the spec validation in `check.sh`).
+2. Frontmatter: `name` equal to the folder name, a one-line `description` of at most 1024 characters starting with "Use when", `license: MIT`, and a `compatibility` line. The description says when to load the skill: the tasks, commands and error messages an agent would see, not a summary of the body. Name the sibling skill to use for overlapping cases.
+3. Add one or two requests per new skill to `evals/triggers.tsv`, and run `evals/triggers.sh` after changing any description.
+4. Keep the `SKILL.md` body between 500 and 700 words; `check.sh` fails above 700. When a skill grows past that, split it by task (as the three `comodino-*` skills are split) or move detail that only some tasks need into `references/`.
+5. Write rules and facts an agent acts on, not history: no stories of past incidents, bug archaeology or personal results. Keep one measured number where it sizes a decision. When a skill states a cluster fact, add it to `tests/site.sh`.
+6. When an agent would otherwise compose a command or pipeline from prose, write a script instead. Scripts go in the skill's `scripts/`, job templates in `assets/`. A script:
+   - starts with a comment block saying what it does, including a `# usage: NAME ...` line, which `-h` prints;
+   - exits 2 on bad arguments, writes results to stdout and progress or errors to stderr;
+   - skips the excluded nodes (`lrc-cluster/scripts/excluded_nodes.sh`) if it chooses or submits to nodes;
+   - is listed in its skill's script table and in the README index, and tested in `tests/run.sh` (fake `sbatch`, `sinfo` and `squeue` live in the test's PATH).
+7. Write for any nano member: no personal home paths (`/global/home/users/<name>`), personal checkouts, accounts other than `nano`, or credentials. Use `$HOME`, `$USER` and placeholders such as `CHECKOUT`. Personal conventions belong in your own `$USER-lrc` skill (`install.sh --personal`).
+8. Write prose as unwrapped markdown, one line per paragraph or list item.
