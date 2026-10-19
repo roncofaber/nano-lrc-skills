@@ -3,7 +3,7 @@ set -u
 root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 status=0 max_words=700
 declare -A seen=()
-validator="$(command -v agentskills || true)"
+validator="$(command -v skills-ref || true)"
 
 fail() { echo "FAIL $1: $2"; status=1; }
 field() { awk -v key="$2" '/^---$/{n++; next} n==1 && $0 ~ "^" key ":" {sub("^" key ": *", ""); print; exit}' "$1"; }
@@ -51,10 +51,10 @@ for dir in "$root"/skills/*/ "$root"/workflows/*/; do
         grep -q "$(basename "$sh")" "$file" || fail "$rel" "$script is not mentioned in SKILL.md"
     done < <(find "$dir" -type f -name '*.sh')
     if [[ -n "$validator" ]]; then
-        "$validator" validate "$dir" >/dev/null 2>&1 || fail "$rel" "agentskills validate: $("$validator" validate "$dir" 2>&1 | tail -n +2 | tr '\n' ' ')"
+        "$validator" validate "$dir" >/dev/null 2>&1 || fail "$rel" "skills-ref validate: $("$validator" validate "$dir" 2>&1 | tail -n +2 | tr '\n' ' ')"
     fi
 done
-[[ -n "$validator" ]] || echo "note: agentskills not found, skipped spec validation (pip install skills-ref)"
+[[ -n "$validator" ]] || echo "note: skills-ref not found, skipped spec validation (install skills-ref, see CONTRIBUTING.md)"
 
 (( status == 0 )) && echo "OK: all skills valid"
 exit $status
